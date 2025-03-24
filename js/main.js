@@ -492,43 +492,74 @@ function updateStreamHealth(cameraIndex, status) {
 
 // Switch to grid view showing all cameras
 function switchToGridView() {
-    document.getElementById('grid-view').style.display = 'grid';
+    console.log("Switching to grid view from mode: " + currentMode);
+    
+    // First, update the display properties of the containers
+    document.getElementById('grid-view').style.display = 'grid'; // Changed from 'flex' to 'grid' to match CSS
     document.getElementById('single-view').style.display = 'none';
     
     // If we're coming from single view, we need to reattach the HLS player
     if (currentMode === 'single' && currentSingleCamera) {
+        console.log("Reattaching HLS player for: " + currentSingleCamera);
+        
         // Get the HLS instance from the single view
         var hls = hlsPlayers[currentSingleCamera];
-        if (hls) {
+        var mainFeed = document.getElementById('main-feed');
+        
+        if (hls && mainFeed) {
             // Detach from main feed
-            var mainFeed = document.getElementById('main-feed');
             hls.detachMedia();
             
             // Find the original video element in the grid
             var gridVideo = document.querySelector('[data-stream="' + currentSingleCamera + '"]');
             if (gridVideo) {
+                console.log("Found grid video element for: " + currentSingleCamera);
                 // Reattach to the grid video
                 hls.attachMedia(gridVideo);
-                gridVideo.play().catch(function(error) {
-                    console.error("Error playing video in grid view:", error);
-                });
+                
+                // Make sure the video plays
+                try {
+                    gridVideo.play().catch(function(error) {
+                        console.error("Error playing video in grid view:", error);
+                    });
+                } catch(e) {
+                    console.error("Error playing grid video:", e);
+                }
+            } else {
+                console.error("Could not find grid video for: " + currentSingleCamera);
             }
         }
     }
     
-    // Show all camera containers
-    for (var i = 0; i < cameraContainers.length; i++) {
-        cameraContainers[i].style.display = 'block';
+    // Make sure all camera containers are visible
+    var containers = document.querySelectorAll('.camera-container');
+    for (var i = 0; i < containers.length; i++) {
+        containers[i].style.display = 'block';
     }
     
     // Ensure all grid cameras are playing
     var videos = document.querySelectorAll('#grid-view .camera-feed');
+    console.log("Found " + videos.length + " video elements in grid view");
+    
     for (var j = 0; j < videos.length; j++) {
-        resumeVideo(videos[j]);
+        var video = videos[j];
+        var streamId = video.dataset.stream;
+        console.log("Resuming video: " + streamId);
+        
+        // If this video doesn't have an active HLS player, reinitialize it
+        if (!hlsPlayers[streamId] || !hlsPlayers[streamId].media) {
+            console.log("Reinitializing player for: " + streamId);
+            initializePlayer(video);
+        } else {
+            resumeVideo(video);
+        }
     }
     
     // Update the current mode
     currentMode = 'grid';
+    
+    // Update the selected camera highlight
+    updateSelectedCamera(selectedCameraIndex);
 }
 
 // Switch to single camera view
