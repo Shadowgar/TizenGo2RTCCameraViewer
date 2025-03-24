@@ -67,7 +67,11 @@ html, body {
     right: 0;
     bottom: 0;
     background-color: #000;
-    object-fit: fill !important; /* Force stretching regardless of aspect ratio */
+    /* Alternative to object-fit for Tizen compatibility */
+    -webkit-object-fit: fill !important;
+    -moz-object-fit: fill !important;
+    -o-object-fit: fill !important;
+    object-fit: fill !important; /* Standard property - may cause Tizen warnings but needed for compatibility */
 }
 
 .camera-label {
@@ -98,7 +102,11 @@ html, body {
     right: 0;
     bottom: 0;
     background-color: #000;
-    object-fit: fill !important; /* Force stretching regardless of aspect ratio */
+    /* Alternative to object-fit for Tizen compatibility */
+    -webkit-object-fit: fill !important;
+    -moz-object-fit: fill !important;
+    -o-object-fit: fill !important;
+    object-fit: fill !important; /* Standard property - may cause Tizen warnings but needed for compatibility */
 }
 
 #main-label {

@@ -1,4 +1,77 @@
 /* global Hls */
+/* global IntersectionObserver */
+
+// IntersectionObserver polyfill for Tizen compatibility
+if (!('IntersectionObserver' in window)) {
+    // Simple polyfill for IntersectionObserver
+    window.IntersectionObserver = function(callback, options) {
+        this.callback = callback;
+        this.options = options || {};
+        this.targets = [];
+        
+        // Method to start observing an element
+        this.observe = function(target) {
+            if (this.targets.indexOf(target) === -1) {
+                this.targets.push(target);
+                this.checkVisibility(target);
+            }
+        };
+        
+        // Method to stop observing an element
+        this.unobserve = function(target) {
+            var index = this.targets.indexOf(target);
+            if (index !== -1) {
+                this.targets.splice(index, 1);
+            }
+        };
+        
+        // Method to disconnect the observer
+        this.disconnect = function() {
+            this.targets = [];
+        };
+        
+        // Method to check visibility
+        this.checkVisibility = function(target) {
+            var rect = target.getBoundingClientRect();
+            var windowHeight = window.innerHeight || document.documentElement.clientHeight;
+            var windowWidth = window.innerWidth || document.documentElement.clientWidth;
+            
+            // Check if element is in viewport
+            var isIntersecting = (
+                rect.top <= windowHeight &&
+                rect.left <= windowWidth &&
+                rect.bottom >= 0 &&
+                rect.right >= 0
+            );
+            
+            // Call the callback with an entry
+            this.callback([{
+                boundingClientRect: rect,
+                intersectionRatio: isIntersecting ? 1 : 0,
+                intersectionRect: isIntersecting ? rect : null,
+                isIntersecting: isIntersecting,
+                rootBounds: {
+                    bottom: windowHeight,
+                    left: 0,
+                    right: windowWidth,
+                    top: 0,
+                    width: windowWidth,
+                    height: windowHeight
+                },
+                target: target,
+                time: Date.now()
+            }]);
+        };
+        
+        // Set up a timer to periodically check visibility
+        var self = this;
+        this.intervalId = setInterval(function() {
+            self.targets.forEach(function(target) {
+                self.checkVisibility(target);
+            });
+        }, 250); // Check every 250ms
+    };
+}
 
 // Camera stream configuration
 var cameraStreams = {
@@ -12,6 +85,7 @@ var cameraStreams = {
 var currentMode = 'grid';
 var currentSingleCamera = null;
 var hlsPlayers = {};
+var lazyLoadObserver = null; // Define lazyLoadObserver variable
 
 // Track currently selected camera in grid view
 var selectedCameraIndex = 0;
@@ -31,6 +105,210 @@ var reconnectInterval = 5000; // 5 seconds between attempts
 var ambientCycleInterval = null;
 var ambientCameras = ['frontyard_stream', 'driveway_stream', 'backdeck_stream', 'backyard_stream'];
 var currentAmbientCamera = 0;
+
+// Set to track which cameras are currently visible
+var visibleCameras = new Set();
+
+// Set to track monitoring intervals for each stream
+var streamMonitorIntervals = {};
+
+// Set up lazy loading with Intersection Observer
+function setupLazyLoading() {
+    // Check if Intersection Observer is supported
+    if (!('IntersectionObserver' in window)) {
+        console.log("Intersection Observer not supported, loading all cameras");
+        // Load all cameras if not supported
+        var videos = document.querySelectorAll('.camera-feed');
+        for (var i = 0; i < videos.length; i++) {
+            initializePlayer(videos[i]);
+        }
+        return;
+    }
+    
+    // Create an observer to watch for cameras coming into view
+    lazyLoadObserver = new IntersectionObserver(function(entries) {
+        entries.forEach(function(entry) {
+            var videoElement = entry.target.querySelector('.camera-feed');
+            var streamId = videoElement.dataset.stream;
+            
+            if (entry.isIntersecting) {
+                // Camera is visible, load it if not already loaded
+                console.log("Camera visible: " + streamId);
+                visibleCameras.add(streamId);
+                
+                if (!hlsPlayers[streamId] || !hlsPlayers[streamId].media) {
+                    console.log("Loading camera: " + streamId);
+                    initializePlayer(videoElement);
+                } else if (videoElement.paused) {
+                    // If player exists but is paused, resume it
+                    console.log("Resuming camera: " + streamId);
+                    resumeVideo(videoElement);
+                    if (hlsPlayers[streamId]) {
+                        hlsPlayers[streamId].startLoad();
+                    }
+                }
+                
+                // Preload adjacent cameras for better user experience
+                preloadAdjacentCameras(streamId);
+            } else {
+                // Camera is not visible, unload it if it's not the current single camera
+                console.log("Camera not visible: " + streamId);
+                visibleCameras.delete(streamId);
+                
+                // Don't unload if it's the current single camera
+                if (currentMode !== 'single' || currentSingleCamera !== streamId) {
+                    // Give a small delay before unloading to prevent flickering during scrolling
+                    setTimeout(function() {
+                        if (!visibleCameras.has(streamId)) {
+                            console.log("Unloading camera: " + streamId);
+                            destroyHlsPlayer(streamId);
+                        }
+                    }, 2000); // Reduced from 5 seconds to 2 seconds for faster memory cleanup
+                }
+            }
+        });
+    }, {
+        root: null, // Use viewport as root
+        rootMargin: '50px', // Reduced from 100px to 50px for more precise loading
+        threshold: 0.1 // Trigger when at least 10% of the camera is visible
+    });
+    
+    // Observe all camera containers
+    cameraContainers.forEach(function(container) {
+        lazyLoadObserver.observe(container);
+    });
+}
+
+// Function to preload adjacent cameras for smoother navigation
+function preloadAdjacentCameras(currentStreamId) {
+    if (currentMode !== 'grid') {
+        return {};
+    }
+    
+    // Find the index of the current camera
+    var currentIndex = -1;
+    for (var i = 0; i < cameraContainers.length; i++) {
+        var video = cameraContainers[i].querySelector('.camera-feed');
+        if (video && video.dataset.stream === currentStreamId) {
+            currentIndex = i;
+            break;
+        }
+    }
+    
+    if (currentIndex === -1) {
+        return {};
+    }
+    
+    // Determine which adjacent cameras to preload
+    var preloadIndices = [];
+    
+    // In a grid, we want to preload cameras to the right, below, and diagonally
+    var gridSize = Math.sqrt(cameraContainers.length);
+    if (gridSize % 1 === 0) { // Perfect square grid
+        var row = Math.floor(currentIndex / gridSize);
+        var col = currentIndex % gridSize;
+        
+        // Right camera
+        if (col < gridSize - 1) {
+            preloadIndices.push(currentIndex + 1);
+        }
+        
+        // Bottom camera
+        if (row < gridSize - 1) {
+            preloadIndices.push(currentIndex + gridSize);
+        }
+    } else {
+        // If not a perfect grid, just preload the next camera
+        if (currentIndex < cameraContainers.length - 1) {
+            preloadIndices.push(currentIndex + 1);
+        }
+    }
+    
+    // Preload the determined cameras with low priority
+    preloadIndices.forEach(function(index) {
+        if (index >= 0 && index < cameraContainers.length) {
+            var video = cameraContainers[index].querySelector('.camera-feed');
+            var streamId = video.dataset.stream;
+            
+            // Only preload if not already loaded
+            if (!hlsPlayers[streamId] && !visibleCameras.has(streamId)) {
+                console.log("Preloading adjacent camera: " + streamId);
+                // Use a lightweight preloading approach
+                preloadStream(streamId);
+            }
+        }
+    });
+    return {};
+}
+
+// Lightweight preloading of streams without fully initializing the player
+function preloadStream(streamId) {
+    if (!cameraStreams[streamId]) {
+        return {};
+    }
+    
+    // Create a temporary HLS instance just to start loading the manifest
+    var tempHls = new Hls({
+        maxBufferLength: 0,           // Don't buffer any data
+        startLevel: 0,                // Lowest quality
+        manifestLoadingTimeOut: 3000, // Short timeout
+        manifestLoadingMaxRetry: 1,   // Only try once
+        enableWorker: false,          // Don't use workers for preloading
+    });
+    
+    // Just load the manifest but don't attach to any media element
+    tempHls.loadSource(cameraStreams[streamId]);
+    
+    // Destroy after a short time
+    setTimeout(function() {
+        tempHls.destroy();
+    }, 2000);
+    return {};
+}
+
+// Function to properly destroy an HLS player and clean up resources
+function destroyHlsPlayer(streamId) {
+    if (hlsPlayers[streamId]) {
+        // Stop monitoring interval
+        if (streamMonitorIntervals[streamId]) {
+            clearInterval(streamMonitorIntervals[streamId]);
+            delete streamMonitorIntervals[streamId];
+        }
+        
+        // Get the video element before destroying the player
+        var videoElement = hlsPlayers[streamId].media;
+        
+        // Properly clean up the HLS instance
+        hlsPlayers[streamId].stopLoad();
+        hlsPlayers[streamId].detachMedia();
+        hlsPlayers[streamId].destroy();
+        delete hlsPlayers[streamId];
+        
+        // Clean up the video element
+        if (videoElement) {
+            videoElement.pause();
+            videoElement.removeAttribute('src');
+            videoElement.load(); // This triggers the browser to release resources
+            
+            // Reset video element properties
+            videoElement.style.display = 'none';
+            setTimeout(function() {
+                videoElement.style.display = ''; // Restore display after cleanup
+            }, 50);
+        }
+        
+        // Force garbage collection if available
+        if (window.gc) {
+            try {
+                window.gc();
+            } catch (e) {
+                console.log("Manual garbage collection failed");
+            }
+        }
+        
+        console.log("Destroyed HLS player for stream: " + streamId);
+    }
+}
 
 // Function to handle video errors
 function handleVideoError(error, streamId) {
@@ -217,292 +495,167 @@ function cycleCameras() {
     }
 }
 
-// Initialize the application
-window.onload = function() {
-    console.log("Application starting...");
+// Optimize camera loading and playback
+function optimizeCameraPlayback() {
+    // Check if we're running low on memory and need to be more aggressive with cleanup
+    var memoryPressure = checkMemoryPressure();
     
-    // Add error handling for the entire application
-    window.onerror = function(message, source, lineno) {
-        console.error("Global error: ", message, " at ", source, ":", lineno);
-        return true;
-    };
-    
-    try {
-        console.log("Initializing camera feeds...");
-        // Initialize all camera feeds
-        var videoElements = document.querySelectorAll('.camera-feed');
-        for (var j = 0; j < videoElements.length; j++) {
-            initializePlayer(videoElements[j]);
-        }
+    // In grid view, we want all visible cameras to play and pause off-screen ones
+    if (currentMode === 'grid') {
+        var gridRect = document.getElementById('grid-view').getBoundingClientRect();
+        var visibleCount = 0;
+        var maxVisibleCameras = memoryPressure ? 2 : 4; // Limit visible cameras under memory pressure
         
-        // Initialize camera selection
-        cameraContainers = document.querySelectorAll('.camera-container');
-        updateSelectedCamera(0); // Select first camera by default
-
-        // Make camera containers focusable for keyboard navigation
-        for (var k = 0; k < cameraContainers.length; k++) {
-            cameraContainers[k].setAttribute('tabindex', '0');
-        }
-        
-        // Add event handler for back-to-grid button
-        var backToGridButton = document.getElementById('back-to-grid');
-        if (backToGridButton) {
-            backToGridButton.addEventListener('click', function() {
-                switchToGridView();
-            });
-        }
-        
-        // Check for URL parameters to set initial state
-        var params = window.location.search.substring(1).split('&');
-        var mode = null;
-        var camera = null;
-        
-        for (var i = 0; i < params.length; i++) {
-            var pair = params[i].split('=');
-            if (pair[0] === 'mode') {
-                mode = pair[1];
-            } else if (pair[0] === 'camera') {
-                camera = pair[1];
-            }
-        }
-        
-        if (mode === 'single' && camera && cameraStreams[camera]) {
-            switchToSingleView(camera);
-        }
-        
-        // Listen for messages from Home Assistant
-        window.addEventListener('message', function(event) {
-            if (event.data && event.data.action) {
-                switch (event.data.action) {
-                    case 'switchToGrid':
-                        switchToGridView();
-                        break;
-                    case 'switchToSingle':
-                        if (event.data.camera && cameraStreams[event.data.camera]) {
-                            switchToSingleView(event.data.camera);
-                        }
-                        break;
-                    default:
-                        break;
+        for (var i = 0; i < cameraContainers.length; i++) {
+            var container = cameraContainers[i];
+            var containerRect = container.getBoundingClientRect();
+            var video = container.querySelector('.camera-feed');
+            var streamId = video.dataset.stream;
+            
+            // Check if container is in viewport
+            var isVisible = !(
+                containerRect.bottom < gridRect.top || 
+                containerRect.top > gridRect.bottom ||
+                containerRect.right < gridRect.left || 
+                containerRect.left > gridRect.right
+            );
+            
+            // If camera is visible or is the selected camera, ensure it's playing
+            // But limit the number of simultaneously playing cameras
+            if ((isVisible || container.classList.contains('selected')) && visibleCount < maxVisibleCameras) {
+                visibleCount++;
+                if (!hlsPlayers[streamId] || !hlsPlayers[streamId].media) {
+                    initializePlayer(video);
+                } else if (video.paused) {
+                    hlsPlayers[streamId].startLoad();
+                    playVideoWithErrorHandling(video);
                 }
-            }
-        });
-        
-        // Handle key events for TV remote
-        document.addEventListener('keydown', function(e) {
-            switch(e.keyCode) {
-                case 10009: // RETURN key
-                    if (currentMode === 'single') {
-                        switchToGridView();
-                    } else {
-                        if (typeof tizen !== 'undefined') {
-                            tizen.application.getCurrentApplication().exit();
-                        }
+            } 
+            // Otherwise, pause it to save resources
+            else {
+                if (hlsPlayers[streamId]) {
+                    if (!video.paused) {
+                        video.pause();
+                        hlsPlayers[streamId].stopLoad();
                     }
-                    break;
-                case 38: // UP arrow
-                    navigateGrid('up');
-                    break;
-                case 40: // DOWN arrow
-                    navigateGrid('down');
-                    break;
-                case 37: // LEFT arrow
-                    navigateGrid('left');
-                    break;
-                case 39: // RIGHT arrow
-                    navigateGrid('right');
-                    break;
-                case 13: // ENTER key
-                    handleEnter();
-                    break;
-                default:
-                    console.log('Key pressed: ' + e.keyCode);
-                    break;
-            }
-        });
-        
-        // Set up lazy loading
-        window.addEventListener('resize', optimizeCameraPlayback);
-        setInterval(optimizeCameraPlayback, 5000); // Check every 5 seconds
-
-        // Run initial optimization
-        setTimeout(optimizeCameraPlayback, 1000);
-        
-        // Set up network quality monitoring
-        setInterval(checkNetworkQuality, 10000); // Check every 10 seconds
-        
-        // Set up stream health monitoring
-        setInterval(monitorStreamHealth, 10000); // Check every 10 seconds
-        
-        // Set up Samsung Ambient Mode
-        setupAmbientMode();
-        
-        // Set up remote-friendly controls
-        setupRemoteControls();
-        
-    } catch (e) {
-        console.error("Error in initialization: ", e);
-    }
-};
-
-// Initialize a video player with HLS.js
-function initializePlayer(videoElement) {
-    var streamId = videoElement.dataset.stream;
-    
-    if (!streamId || !cameraStreams[streamId]) {
-        console.error("Invalid stream ID:", streamId);
-        return;
-    }
-    
-    // Show loading indicator
-    showLoadingIndicator(streamId);
-    
-    // Get the camera index for health monitoring
-    var cameraIndex = -1;
-    for (var i = 0; i < cameraContainers.length; i++) {
-        var video = cameraContainers[i].querySelector('.camera-feed');
-        if (video && video.dataset.stream === streamId) {
-            cameraIndex = i;
-            break;
-        }
-    }
-    
-    // Create HLS player if supported
-    if (Hls.isSupported()) {
-        var hls = new Hls({
-            maxBufferLength: 30,
-            maxMaxBufferLength: 60,
-            manifestLoadingTimeOut: 10000,
-            manifestLoadingMaxRetry: 3,
-            levelLoadingTimeOut: 10000,
-            levelLoadingMaxRetry: 3,
-            fragLoadingTimeOut: 10000,
-            fragLoadingMaxRetry: 3
-        });
-        
-        hls.loadSource(cameraStreams[streamId]);
-        hls.attachMedia(videoElement);
-        
-        // Store the HLS instance for later use
-        hlsPlayers[streamId] = hls;
-        
-        // Set up event handlers
-        hls.on(Hls.Events.MANIFEST_PARSED, function() {
-            onManifestParsed(videoElement, streamId);
-            
-            // Set stream health to good when manifest is parsed
-            if (cameraIndex !== -1) {
-                updateStreamHealth(cameraIndex, 'good');
-            }
-        });
-        
-        hls.on(Hls.Events.ERROR, function(event, data) {
-            console.error("HLS error:", data);
-            
-            // Set stream health to error on fatal errors
-            if (data.fatal && cameraIndex !== -1) {
-                updateStreamHealth(cameraIndex, 'error');
-            }
-            
-            if (data.fatal) {
-                switch(data.type) {
-                    case Hls.ErrorTypes.NETWORK_ERROR:
-                        // Try to recover network error
-                        console.log("Fatal network error encountered, trying to recover");
-                        hls.startLoad();
-                        break;
-                    case Hls.ErrorTypes.MEDIA_ERROR:
-                        console.log("Fatal media error encountered, trying to recover");
-                        hls.recoverMediaError();
-                        break;
-                    default:
-                        // Cannot recover
-                        console.log("Fatal error, cannot recover");
-                        hls.destroy();
-                        delete hlsPlayers[streamId];
-                        handleStreamError(streamId, "Fatal playback error");
-                        break;
-                }
-            }
-        });
-        
-        // Set up monitoring interval to check video readyState
-        if (cameraIndex !== -1) {
-            setInterval(function() {
-                if (!videoElement.paused) {
-                    if (videoElement.readyState < 3) { // HAVE_FUTURE_DATA = 3
-                        updateStreamHealth(cameraIndex, 'poor');
-                    } else {
-                        updateStreamHealth(cameraIndex, 'good');
+                    
+                    // If we're under memory pressure, be more aggressive with cleanup
+                    if (memoryPressure && !container.classList.contains('selected')) {
+                        destroyHlsPlayer(streamId);
                     }
                 }
-            }, 5000); // Check every 5 seconds
+            }
         }
     }
-    // Fallback for browsers without HLS.js support
-    else if (videoElement.canPlayType('application/vnd.apple.mpegurl')) {
-        videoElement.src = cameraStreams[streamId];
-        videoElement.addEventListener('loadedmetadata', function() {
-            onManifestParsed(videoElement, streamId);
-            
-            // Set stream health to good
-            if (cameraIndex !== -1) {
-                updateStreamHealth(cameraIndex, 'good');
-            }
-        });
+    // In single view, only the main feed should be playing
+    else if (currentMode === 'single') {
+        var mainFeed = document.getElementById('main-feed');
+        if (mainFeed.paused) {
+            playVideoWithErrorHandling(mainFeed);
+        }
         
-        videoElement.addEventListener('error', function(e) {
-            console.error("Video error:", e);
-            handleStreamError(streamId, "Video playback error");
+        // Pause all grid view cameras to save resources
+        for (var j = 0; j < cameraContainers.length; j++) {
+            var gridVideo = cameraContainers[j].querySelector('.camera-feed');
+            var gridStreamId = gridVideo.dataset.stream;
             
-            // Set stream health to error
-            if (cameraIndex !== -1) {
-                updateStreamHealth(cameraIndex, 'error');
+            // Don't pause the current single camera
+            if (gridStreamId !== currentSingleCamera && hlsPlayers[gridStreamId]) {
+                gridVideo.pause();
+                hlsPlayers[gridStreamId].stopLoad();
+                
+                // If we're under memory pressure, destroy all non-visible players
+                if (memoryPressure) {
+                    destroyHlsPlayer(gridStreamId);
+                }
             }
-        });
-    } else {
-        console.error("HLS is not supported in this browser!");
-        handleStreamError(streamId, "HLS not supported");
+        }
     }
 }
 
-// Function to update stream health indicator
-function updateStreamHealth(cameraIndex, status) {
-    // Get the camera container
-    var container = cameraContainers[cameraIndex];
-    if (!container) {
-        console.error("Invalid camera index:", cameraIndex);
+// Check if we're running low on memory
+function checkMemoryPressure() {
+    // Use performance.memory if available (Chrome)
+    if (window.performance && performance.memory) {
+        var memoryInfo = performance.memory;
+        var usedHeapRatio = memoryInfo.usedJSHeapSize / memoryInfo.jsHeapSizeLimit;
+        
+        // If we're using more than 70% of available JS heap, consider it memory pressure
+        return usedHeapRatio > 0.7;
+    }
+    
+    // Count active HLS players as a proxy for memory usage
+    var activePlayerCount = 0;
+    for (var streamId in hlsPlayers) {
+        if (hlsPlayers[streamId]) {
+            activePlayerCount++;
+        }
+    }
+    
+    // If we have more than 3 active players, consider it memory pressure
+    return activePlayerCount > 3;
+}
+
+// Update the selected camera
+function updateSelectedCamera(index) {
+    // Remove selection from all cameras
+    for (var i = 0; i < cameraContainers.length; i++) {
+        cameraContainers[i].classList.remove('selected');
+    }
+    
+    // Ensure index is in valid range
+    selectedCameraIndex = Math.max(0, Math.min(index, cameraContainers.length - 1));
+    
+    // Add selection to current camera
+    cameraContainers[selectedCameraIndex].classList.add('selected');
+    
+    // Focus the selected container for keyboard accessibility
+    cameraContainers[selectedCameraIndex].focus();
+}
+
+// Implement grid navigation
+function navigateGrid(direction) {
+    if (currentMode !== 'grid') {
         return;
     }
     
-    // Find or create the health indicator
-    var healthIndicator = container.querySelector('.stream-health-indicator');
-    if (!healthIndicator) {
-        healthIndicator = document.createElement('div');
-        healthIndicator.className = 'stream-health-indicator';
-        container.appendChild(healthIndicator);
+    var gridColumns = 2; // We have a 2x2 grid
+    var currentRow = Math.floor(selectedCameraIndex / gridColumns);
+    var currentCol = selectedCameraIndex % gridColumns;
+    
+    switch(direction) {
+        case 'up':
+            if (currentRow > 0) {
+                updateSelectedCamera(selectedCameraIndex - gridColumns);
+            }
+            break;
+        case 'down':
+            if (currentRow < Math.floor((cameraContainers.length - 1) / gridColumns)) {
+                updateSelectedCamera(selectedCameraIndex + gridColumns);
+            }
+            break;
+        case 'left':
+            if (currentCol > 0) {
+                updateSelectedCamera(selectedCameraIndex - 1);
+            }
+            break;
+        case 'right':
+            if (currentCol < gridColumns - 1 && selectedCameraIndex < cameraContainers.length - 1) {
+                updateSelectedCamera(selectedCameraIndex + 1);
+            }
+            break;
     }
-    
-    // Remove all status classes
-    healthIndicator.classList.remove('health-good', 'health-poor', 'health-error');
-    
-    // Set the appropriate status class and text
-    switch(status) {
-        case 'good':
-            healthIndicator.classList.add('health-good');
-            healthIndicator.textContent = 'Good';
-            break;
-        case 'poor':
-            healthIndicator.classList.add('health-poor');
-            healthIndicator.textContent = 'Poor';
-            break;
-        case 'error':
-            healthIndicator.classList.add('health-error');
-            healthIndicator.textContent = 'Error';
-            break;
-        default:
-            healthIndicator.classList.add('health-good');
-            healthIndicator.textContent = 'Good';
+}
+
+// Handle enter key press
+function handleEnter() {
+    if (currentMode === 'grid' && selectedCameraIndex >= 0) {
+        // Get the stream ID from the selected camera
+        var selectedVideo = cameraContainers[selectedCameraIndex].querySelector('.camera-feed');
+        var streamId = selectedVideo.dataset.stream;
+        if (streamId) {
+            switchToSingleView(streamId);
+        }
     }
 }
 
@@ -607,111 +760,43 @@ function switchToSingleView(cameraId) {
     currentSingleCamera = cameraId;
 }
 
-// Update the selected camera
-function updateSelectedCamera(index) {
-    // Remove selection from all cameras
-    for (var i = 0; i < cameraContainers.length; i++) {
-        cameraContainers[i].classList.remove('selected');
-    }
-    
-    // Ensure index is in valid range
-    selectedCameraIndex = Math.max(0, Math.min(index, cameraContainers.length - 1));
-    
-    // Add selection to current camera
-    cameraContainers[selectedCameraIndex].classList.add('selected');
-    
-    // Focus the selected container for keyboard accessibility
-    cameraContainers[selectedCameraIndex].focus();
-}
-
-// Implement grid navigation
-function navigateGrid(direction) {
-    if (currentMode !== 'grid') {
+// Update stream health indicator
+function updateStreamHealth(cameraIndex, status) {
+    // Get the camera container
+    var container = cameraContainers[cameraIndex];
+    if (!container) {
+        console.error("Invalid camera index:", cameraIndex);
         return;
     }
     
-    var gridColumns = 2; // We have a 2x2 grid
-    var currentRow = Math.floor(selectedCameraIndex / gridColumns);
-    var currentCol = selectedCameraIndex % gridColumns;
+    // Find or create the health indicator
+    var healthIndicator = container.querySelector('.stream-health-indicator');
+    if (!healthIndicator) {
+        healthIndicator = document.createElement('div');
+        healthIndicator.className = 'stream-health-indicator';
+        container.appendChild(healthIndicator);
+    }
     
-    switch(direction) {
-        case 'up':
-            if (currentRow > 0) {
-                updateSelectedCamera(selectedCameraIndex - gridColumns);
-            }
+    // Remove all status classes
+    healthIndicator.classList.remove('health-good', 'health-poor', 'health-error');
+    
+    // Set the appropriate status class and text
+    switch(status) {
+        case 'good':
+            healthIndicator.classList.add('health-good');
+            healthIndicator.textContent = 'Good';
             break;
-        case 'down':
-            if (currentRow < Math.floor((cameraContainers.length - 1) / gridColumns)) {
-                updateSelectedCamera(selectedCameraIndex + gridColumns);
-            }
+        case 'poor':
+            healthIndicator.classList.add('health-poor');
+            healthIndicator.textContent = 'Poor';
             break;
-        case 'left':
-            if (currentCol > 0) {
-                updateSelectedCamera(selectedCameraIndex - 1);
-            }
+        case 'error':
+            healthIndicator.classList.add('health-error');
+            healthIndicator.textContent = 'Error';
             break;
-        case 'right':
-            if (currentCol < gridColumns - 1 && selectedCameraIndex < cameraContainers.length - 1) {
-                updateSelectedCamera(selectedCameraIndex + 1);
-            }
-            break;
-    }
-}
-
-// Handle enter key press
-function handleEnter() {
-    if (currentMode === 'grid' && selectedCameraIndex >= 0) {
-        // Get the stream ID from the selected camera
-        var selectedVideo = cameraContainers[selectedCameraIndex].querySelector('.camera-feed');
-        var streamId = selectedVideo.dataset.stream;
-        if (streamId) {
-            switchToSingleView(streamId);
-        }
-    }
-}
-
-// Optimize camera loading and playback
-function optimizeCameraPlayback() {
-    // In grid view, we want all visible cameras to play and pause off-screen ones
-    if (currentMode === 'grid') {
-        var gridRect = document.getElementById('grid-view').getBoundingClientRect();
-        
-        for (var i = 0; i < cameraContainers.length; i++) {
-            var container = cameraContainers[i];
-            var containerRect = container.getBoundingClientRect();
-            var video = container.querySelector('.camera-feed');
-            var streamId = video.dataset.stream;
-            
-            // Check if container is in viewport
-            var isVisible = !(
-                containerRect.bottom < gridRect.top || 
-                containerRect.top > gridRect.bottom ||
-                containerRect.right < gridRect.left || 
-                containerRect.left > gridRect.right
-            );
-            
-            // If camera is visible or is the selected camera, ensure it's playing
-            if (isVisible || container.classList.contains('selected')) {
-                if (video.paused && hlsPlayers[streamId]) {
-                    hlsPlayers[streamId].startLoad();
-                    playVideoWithErrorHandling(video);
-                }
-            } 
-            // Otherwise, pause it to save resources
-            else {
-                if (!video.paused && hlsPlayers[streamId]) {
-                    video.pause();
-                    hlsPlayers[streamId].stopLoad();
-                }
-            }
-        }
-    }
-    // In single view, only the main feed should be playing
-    else if (currentMode === 'single') {
-        var mainFeed = document.getElementById('main-feed');
-        if (mainFeed.paused) {
-            playVideoWithErrorHandling(mainFeed);
-        }
+        default:
+            healthIndicator.classList.add('health-good');
+            healthIndicator.textContent = 'Good';
     }
 }
 
@@ -1214,4 +1299,279 @@ function switchToPreviousCamera() {
     var prevIndex = (currentIndex - 1 + cameraIds.length) % cameraIds.length;
     
     switchToSingleView(cameraIds[prevIndex]);
+}
+
+// Initialize the application
+window.onload = function() {
+    console.log("Application starting...");
+    
+    // Add error handling for the entire application
+    window.onerror = function(message, source, lineno) {
+        console.error("Global error: ", message, " at ", source, ":", lineno);
+        return true;
+    };
+    
+    try {
+        console.log("Initializing camera feeds...");
+        // Initialize all camera feeds
+        setupLazyLoading();
+        
+        // Initialize camera selection
+        cameraContainers = document.querySelectorAll('.camera-container');
+        updateSelectedCamera(0); // Select first camera by default
+
+        // Make camera containers focusable for keyboard navigation
+        for (var k = 0; k < cameraContainers.length; k++) {
+            cameraContainers[k].setAttribute('tabindex', '0');
+        }
+        
+        // Add event handler for back-to-grid button
+        var backToGridButton = document.getElementById('back-to-grid');
+        if (backToGridButton) {
+            backToGridButton.addEventListener('click', function() {
+                switchToGridView();
+            });
+        }
+        
+        // Check for URL parameters to set initial state
+        var params = window.location.search.substring(1).split('&');
+        var mode = null;
+        var camera = null;
+        
+        for (var i = 0; i < params.length; i++) {
+            var pair = params[i].split('=');
+            if (pair[0] === 'mode') {
+                mode = pair[1];
+            } else if (pair[0] === 'camera') {
+                camera = pair[1];
+            }
+        }
+        
+        if (mode === 'single' && camera && cameraStreams[camera]) {
+            switchToSingleView(camera);
+        }
+        
+        // Listen for messages from Home Assistant
+        window.addEventListener('message', function(event) {
+            if (event.data && event.data.action) {
+                switch (event.data.action) {
+                    case 'switchToGrid':
+                        switchToGridView();
+                        break;
+                    case 'switchToSingle':
+                        if (event.data.camera && cameraStreams[event.data.camera]) {
+                            switchToSingleView(event.data.camera);
+                        }
+                        break;
+                    default:
+                        break;
+                }
+            }
+        });
+        
+        // Handle key events for TV remote
+        document.addEventListener('keydown', function(e) {
+            switch(e.keyCode) {
+                case 10009: // RETURN key
+                    if (currentMode === 'single') {
+                        switchToGridView();
+                    } else {
+                        if (typeof tizen !== 'undefined') {
+                            tizen.application.getCurrentApplication().exit();
+                        }
+                    }
+                    break;
+                case 38: // UP arrow
+                    navigateGrid('up');
+                    break;
+                case 40: // DOWN arrow
+                    navigateGrid('down');
+                    break;
+                case 37: // LEFT arrow
+                    navigateGrid('left');
+                    break;
+                case 39: // RIGHT arrow
+                    navigateGrid('right');
+                    break;
+                case 13: // ENTER key
+                    handleEnter();
+                    break;
+                default:
+                    console.log('Key pressed: ' + e.keyCode);
+                    break;
+            }
+        });
+        
+        // Set up lazy loading
+        window.addEventListener('resize', optimizeCameraPlayback);
+        setInterval(optimizeCameraPlayback, 5000); // Check every 5 seconds
+
+        // Run initial optimization
+        setTimeout(optimizeCameraPlayback, 1000);
+        
+        // Set up network quality monitoring
+        setInterval(checkNetworkQuality, 10000); // Check every 10 seconds
+        
+        // Set up stream health monitoring
+        setInterval(monitorStreamHealth, 10000); // Check every 10 seconds
+        
+        // Set up Samsung Ambient Mode
+        setupAmbientMode();
+        
+        // Set up remote-friendly controls
+        setupRemoteControls();
+        
+    } catch (e) {
+        console.error("Error in initialization: ", e);
+    }
+};
+
+// Initialize a video player with HLS.js
+function initializePlayer(videoElement) {
+    var streamId = videoElement.dataset.stream;
+    
+    if (!streamId || !cameraStreams[streamId]) {
+        console.error("Invalid stream ID:", streamId);
+        return;
+    }
+    
+    // If this stream already has an HLS player, don't initialize again
+    if (hlsPlayers[streamId] && hlsPlayers[streamId].media === videoElement) {
+        console.log("Player already initialized for stream: " + streamId);
+        return;
+    }
+    
+    // Clean up any existing HLS player for this stream
+    destroyHlsPlayer(streamId);
+    
+    // Show loading indicator
+    showLoadingIndicator(streamId);
+    
+    // Get the camera index for health monitoring
+    var cameraIndex = -1;
+    for (var i = 0; i < cameraContainers.length; i++) {
+        var video = cameraContainers[i].querySelector('.camera-feed');
+        if (video && video.dataset.stream === streamId) {
+            cameraIndex = i;
+            break;
+        }
+    }
+    
+    // Create HLS player if supported
+    if (Hls.isSupported()) {
+        var hls = new Hls({
+            maxBufferLength: 3,           // Reduced from 5 for faster startup
+            maxMaxBufferLength: 10,       // Reduced from 30
+            manifestLoadingTimeOut: 5000, // Reduced from 8000
+            manifestLoadingMaxRetry: 2,   // Kept at 2
+            levelLoadingTimeOut: 5000,    // Reduced from 8000
+            levelLoadingMaxRetry: 2,      // Kept at 2
+            fragLoadingTimeOut: 5000,     // Reduced from 8000
+            fragLoadingMaxRetry: 2,       // Kept at 2
+            startLevel: 0,                // Start with lowest quality for faster loading
+            abrEwmaDefaultEstimate: 500000, // Initial bandwidth estimate (500kbps)
+            abrEwmaFastLive: 2,           // Faster ABR algorithm for live streams (reduced from 3)
+            abrEwmaSlowLive: 5,           // Faster ABR algorithm for live streams (reduced from 9)
+            enableWorker: true,           // Use Web Workers for better performance
+            lowLatencyMode: true,         // Enable low latency mode
+            backBufferLength: 10,         // Limit back buffer to 10 seconds (reduced from 30)
+            maxBufferHole: 0.3,           // Reduced from default 0.5
+            highBufferWatchdogPeriod: 1,  // Reduced from default 2
+            nudgeMaxRetry: 3,             // Reduced from default 5
+            maxFragLookUpTolerance: 0.2,  // Reduced from default 0.25
+            liveSyncDurationCount: 2,     // Reduced from default 3
+            liveMaxLatencyDurationCount: 5, // Reduced from default 10
+            liveDurationInfinity: false,  // Don't treat live streams as infinite duration
+            maxLiveSyncPlaybackRate: 1.5  // Limit playback rate for catching up with live edge
+        });
+        
+        hls.loadSource(cameraStreams[streamId]);
+        hls.attachMedia(videoElement);
+        
+        // Store the HLS instance for later use
+        hlsPlayers[streamId] = hls;
+        
+        // Set up event handlers
+        hls.on(Hls.Events.MANIFEST_PARSED, function() {
+            onManifestParsed(videoElement, streamId);
+            
+            // Set stream health to good when manifest is parsed
+            if (cameraIndex !== -1) {
+                updateStreamHealth(cameraIndex, 'good');
+            }
+        });
+        
+        hls.on(Hls.Events.ERROR, function(event, data) {
+            console.error("HLS error:", data);
+            
+            // Set stream health to error on fatal errors
+            if (data.fatal && cameraIndex !== -1) {
+                updateStreamHealth(cameraIndex, 'error');
+            }
+            
+            if (data.fatal) {
+                switch(data.type) {
+                    case Hls.ErrorTypes.NETWORK_ERROR:
+                        // Try to recover network error
+                        console.log("Fatal network error encountered, trying to recover");
+                        hls.startLoad();
+                        break;
+                    case Hls.ErrorTypes.MEDIA_ERROR:
+                        console.log("Fatal media error encountered, trying to recover");
+                        hls.recoverMediaError();
+                        break;
+                    default:
+                        // Cannot recover
+                        console.log("Fatal error, cannot recover");
+                        destroyHlsPlayer(streamId);
+                        handleStreamError(streamId, "Fatal playback error");
+                        break;
+                }
+            }
+        });
+        
+        // Set up monitoring interval to check video readyState
+        if (cameraIndex !== -1) {
+            // Clear any existing interval
+            if (streamMonitorIntervals[streamId]) {
+                clearInterval(streamMonitorIntervals[streamId]);
+            }
+            
+            // Create new monitoring interval
+            streamMonitorIntervals[streamId] = setInterval(function() {
+                if (!videoElement.paused) {
+                    if (videoElement.readyState < 3) { // HAVE_FUTURE_DATA = 3
+                        updateStreamHealth(cameraIndex, 'poor');
+                    } else {
+                        updateStreamHealth(cameraIndex, 'good');
+                    }
+                }
+            }, 5000); // Check every 5 seconds
+        }
+    }
+    // Fallback for browsers without HLS.js support
+    else if (videoElement.canPlayType('application/vnd.apple.mpegurl')) {
+        videoElement.src = cameraStreams[streamId];
+        videoElement.addEventListener('loadedmetadata', function() {
+            onManifestParsed(videoElement, streamId);
+            
+            // Set stream health to good
+            if (cameraIndex !== -1) {
+                updateStreamHealth(cameraIndex, 'good');
+            }
+        });
+        
+        videoElement.addEventListener('error', function(e) {
+            console.error("Video error:", e);
+            handleStreamError(streamId, "Video playback error");
+            
+            // Set stream health to error
+            if (cameraIndex !== -1) {
+                updateStreamHealth(cameraIndex, 'error');
+            }
+        });
+    } else {
+        console.error("HLS is not supported in this browser!");
+        handleStreamError(streamId, "HLS not supported");
+    }
 }
