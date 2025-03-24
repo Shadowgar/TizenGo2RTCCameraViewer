@@ -2,10 +2,10 @@
 
 // Camera stream configuration
 var cameraStreams = {
-    backdeck_stream: 'http://192.168.50.25:1984/api/stream.m3u8?src=backdeck_stream&mp4=flac',
-    driveway_stream: 'http://192.168.50.25:1984/api/stream.m3u8?src=driveway_stream&mp4=flac',
-    frontyard_stream: 'http://192.168.50.25:1984/api/stream.m3u8?src=frontyard_stream&mp4=flac',
-    backyard_stream: 'http://192.168.50.25:1984/api/stream.m3u8?src=backyard_stream&mp4=flac'
+    backdeck_stream: 'http://192.168.50.25:1984/api/stream.m3u8?src=backdeck_stream&mp4=flac&width=1280&height=720',
+    driveway_stream: 'http://192.168.50.25:1984/api/stream.m3u8?src=driveway_stream&mp4=flac&width=1280&height=720',
+    frontyard_stream: 'http://192.168.50.25:1984/api/stream.m3u8?src=frontyard_stream&mp4=flac&width=1280&height=720',
+    backyard_stream: 'http://192.168.50.25:1984/api/stream.m3u8?src=backyard_stream&mp4=flac&width=1280&height=720'
 };
 
 // View mode: 'grid' or 'single'
@@ -38,18 +38,26 @@ function handleVideoError(error, streamId) {
     hideLoadingIndicator(streamId);
 }
 
-// Force the video to stretch to fill its container (16:10 aspect ratio)
+// Force the video to fill its container by stretching if needed
 function forceAspectRatio(videoElement) {
-    // Simply force the video to fill the entire container
+    // Force the video to completely fill the container
     videoElement.style.position = 'absolute';
     videoElement.style.top = '0';
     videoElement.style.left = '0';
     videoElement.style.width = '100%';
     videoElement.style.height = '100%';
     
-    // Add additional styles to force stretching
+    // Force stretching to fill container regardless of aspect ratio
+    videoElement.style.objectFit = 'fill';
+    
+    // Set attributes and make sure any browser constraints are overridden
     videoElement.setAttribute('width', '100%');
     videoElement.setAttribute('height', '100%');
+    
+    // Disable any preserveAspectRatio attributes
+    if (videoElement.hasAttribute('preserveAspectRatio')) {
+        videoElement.removeAttribute('preserveAspectRatio');
+    }
 }
 
 // Function for manifest parsed event
