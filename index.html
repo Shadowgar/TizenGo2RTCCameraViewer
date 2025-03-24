@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+    <meta name="description" content="Camera Viewer App"/>
+    <title>Camera Viewer</title>
+    <link rel="stylesheet" type="text/css" href="css/style.css"/>
+    <!-- Add HLS.js with script tag first -->
+    <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+</head>
+<body>
+    <div id="main">
+        <div id="grid-view">
+            <div class="camera-container" id="backdeck-container">
+                <video id="backdeck-feed" class="camera-feed" data-stream="backdeck_stream" width="100%" height="100%"></video>
+                <div class="camera-label">Backdeck</div>
+                <!-- Loading indicator added for each camera -->
+                <div class="loading" id="backdeck-loading"></div>
+            </div>
+            <div class="camera-container" id="driveway-container">
+                <video id="driveway-feed" class="camera-feed" data-stream="driveway_stream" width="100%" height="100%"></video>
+                <div class="camera-label">Driveway</div>
+                <div class="loading" id="driveway-loading"></div>
+            </div>
+            <div class="camera-container" id="frontyard-container">
+                <video id="frontyard-feed" class="camera-feed" data-stream="frontyard_stream" width="100%" height="100%"></video>
+                <div class="camera-label">Front Yard</div>
+                <div class="loading" id="frontyard-loading"></div>
+            </div>
+            <div class="camera-container" id="backyard-container">
+                <video id="backyard-feed" class="camera-feed" data-stream="backyard_stream" width="100%" height="100%"></video>
+                <div class="camera-label">Backyard</div>
+                <div class="loading" id="backyard-loading"></div>
+            </div>
+        </div>
+        <div id="single-view" style="display: none;">
+            <video id="main-feed" class="camera-feed" width="100%" height="100%"></video>
+            <div id="main-label" class="camera-label"></div>
+            <div class="loading" id="main-loading"></div>
+            <!-- Add camera controls for single view -->
+            <div class="camera-controls">
+                <button class="control-button" id="previous-camera" aria-label="Previous Camera">◀</button>
+                <button class="control-button" id="toggle-play" aria-label="Play/Pause">⏸</button>
+                <button class="control-button" id="next-camera" aria-label="Next Camera">▶</button>
+                <button class="control-button" id="back-to-grid" aria-label="Back to Grid">⊞</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Add elements for our new features -->
+    <div id="remote-feedback" style="display: none;"></div>
+    
+    <!-- Help and info overlay (can be toggled with a button) -->
+    <div id="help-overlay" style="display: none;">
+        <div class="help-content">
+            <h2>Camera Viewer Controls</h2>
+            <ul>
+                <li><strong>Arrow Keys:</strong> Navigate between cameras</li>
+                <li><strong>Enter/OK:</strong> Select camera / Return to grid</li>
+                <li><strong>Back:</strong> Return to grid / Exit app</li>
+                <li><strong>Play/Pause:</strong> Toggle camera playback</li>
+                <li><strong>FF/RW:</strong> Switch between cameras in single view</li>
+            </ul>
+            <button id="close-help">Close</button>
+        </div>
+    </div>
+    
+    <script src="js/main.js"></script>
+</body>
+</html>

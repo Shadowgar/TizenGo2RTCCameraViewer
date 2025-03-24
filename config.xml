@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<widget xmlns:tizen="http://tizen.org/ns/widgets" xmlns="http://www.w3.org/ns/widgets" id="http://yourdomain/Go2RTCCameraViewer" version="1.0.0" viewmodes="maximized">
+    <tizen:application id="qe1xb4aO2T.Go2RTCCameraViewer" package="qe1xb4aO2T" required_version="2.3"/>
+    <author href="https://github.com/yourusername" email="rocco.paul@gmail.com">Paul Rocco</author>
+    <content src="index.html"/>
+    <description>A camera viewer app that connects to Go2RTC streams.</description>
+    <feature name="http://tizen.org/feature/screen.size.normal.1080.1920"/>
+    <feature name="http://tizen.org/feature/network.wifi"/>
+    <feature name="http://tizen.org/feature/network.internet"/>
+    <feature name="http://tizen.org/feature/multimedia.transcoding"/>
+    <feature name="http://tizen.org/feature/media.video_recording"/>
+    <feature name="http://tizen.org/feature/media.audio_recording"/>
+    <feature name="http://tizen.org/feature/media.video_codec.h264"/>
+    <feature name="http://tizen.org/feature/media.audio_codec.aac"/>
+    <feature name="http://tizen.org/feature/media.audio_codec.mp3"/>
+    <feature name="http://tizen.org/feature/media.audio_codec.flac"/>
+    <feature name="http://tizen.org/feature/screen.size.all"/>
+    <feature name="http://tizen.org/feature/tv.audio"/>
+    <feature name="http://tizen.org/feature/tv.input.remote"/>
+    <icon src="icon.png"/>
+    <license>MIT</license>
+    <name>Camera Viewer</name>
+    <tizen:privilege name="http://tizen.org/privilege/internet"/>
+    <tizen:privilege name="http://tizen.org/privilege/tv.inputdevice"/>
+    <tizen:privilege name="http://tizen.org/privilege/tv.display"/>
+    <tizen:privilege name="http://tizen.org/privilege/application.launch"/>
+    <tizen:privilege name="http://tizen.org/privilege/tv.audio"/>
+    <tizen:privilege name="http://tizen.org/privilege/fullscreen"/>
+    <tizen:privilege name="http://tizen.org/privilege/display"/>
+    <tizen:privilege name="http://tizen.org/privilege/download"/>
+    <tizen:privilege name="http://developer.samsung.com/privilege/network.public"/>
+    <tizen:privilege name="http://developer.samsung.com/privilege/tvaudio"/>
+    <tizen:profile name="tv-samsung"/>
+    <tizen:setting screen-orientation="landscape" context-menu="enable" background-support="enable" encryption="disable" install-location="auto" hwkey-event="enable" sound-mode="shared"/>
+</widget>

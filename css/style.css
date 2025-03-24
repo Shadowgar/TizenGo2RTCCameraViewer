@@ -1,0 +1,351 @@
+/* Reset styles */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+html, body {
+    width: 100%;
+    height: 100%;
+    background-color: #000;
+    color: #fff;
+    font-family: 'Samsung One', Arial, sans-serif;
+    overflow: hidden;
+}
+
+#main {
+    width: 100%;
+    height: 100%;
+    position: relative;
+    background-color: #000;
+}
+
+/* Grid view styles */
+#grid-view {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: center;
+    padding: 10px;
+}
+
+.camera-container {
+    /* Keep existing styles */
+    position: relative;
+    width: 48%;
+    height: 48%;
+    margin: 0.5%;
+    border-radius: 10px;
+    background-color: #111;
+    overflow: hidden;
+    /* Add transition for smooth highlight effect */
+    transition: box-shadow 0.3s ease, transform 0.2s ease;
+}
+
+/* Selection indicator for cameras */
+.camera-container.selected {
+    box-shadow: 0 0 0 4px #4285f4; /* Blue highlight border */
+    transform: scale(1.02); /* Slightly enlarge */
+    z-index: 10; /* Bring to front */
+}
+
+/* Add a visible focus indicator for accessibility */
+.camera-container:focus {
+    outline: none;
+    box-shadow: 0 0 0 4px #4285f4;
+}
+
+.camera-feed {
+    width: 100%;
+    height: 100%;
+    /* Replace object-fit with positioning */
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+}
+
+.camera-label {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    padding: 8px;
+    background-color: rgba(0, 0, 0, 0.7);
+    color: white;
+    font-size: 16px;
+    text-align: center;
+}
+
+/* Single view styles */
+#single-view {
+    width: 100%;
+    height: 100%;
+    position: relative;
+}
+
+#main-feed {
+    width: 100%;
+    height: 100%;
+    /* Replace object-fit with positioning */
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+}
+
+#main-label {
+    position: absolute;
+    bottom: 20px;
+    left: 20px;
+    padding: 10px 20px;
+    background-color: rgba(0, 0, 0, 0.7);
+    color: white;
+    font-size: 20px;
+    border-radius: 5px;
+}
+
+/* Quality indicator */
+#quality-indicator {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    padding: 10px 15px;
+    border-radius: 5px;
+    color: white;
+    font-weight: bold;
+    z-index: 1000;
+    opacity: 1;
+    transition: opacity 1s ease;
+}
+
+.quality-low {
+    background-color: #e53935; /* Red */
+}
+
+.quality-medium {
+    background-color: #fb8c00; /* Orange */
+}
+
+.quality-high {
+    background-color: #43a047; /* Green */
+}
+
+/* Error indicator */
+.stream-error {
+    position: relative;
+}
+
+.stream-error::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.6);
+    z-index: 5;
+}
+
+.error-indicator {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background-color: rgba(0, 0, 0, 0.8);
+    color: white;
+    padding: 15px 20px;
+    border-radius: 10px;
+    text-align: center;
+    z-index: 10;
+}
+
+.error-icon {
+    font-size: 24px;
+    display: block;
+    margin-bottom: 10px;
+}
+
+/* Stream health indicators */
+.stream-health {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    padding: 5px 10px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: bold;
+    opacity: 1;
+    transition: opacity 0.5s ease;
+    z-index: 5;
+}
+
+.health-good {
+    background-color: rgba(67, 160, 71, 0.8); /* Green */
+    color: white;
+}
+
+.health-medium {
+    background-color: rgba(251, 140, 0, 0.8); /* Orange */
+    color: white;
+}
+
+.health-poor {
+    background-color: rgba(229, 57, 53, 0.8); /* Red */
+    color: white;
+}
+
+.health-bad {
+    background-color: rgba(183, 28, 28, 0.8); /* Dark Red */
+    color: white;
+}
+
+/* Ambient mode styles */
+.ambient-mode {
+    background-color: #000;
+}
+
+#ambient-container {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: #000;
+    display: none;
+}
+
+#ambient-feed {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    /* Replace object-fit with positioning */
+}
+
+/* Remote control feedback */
+#remote-feedback {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background-color: rgba(0, 0, 0, 0.7);
+    color: white;
+    padding: 20px 40px;
+    border-radius: 50px;
+    font-size: 24px;
+    font-weight: bold;
+    z-index: 1000;
+}
+
+/* Media queries for different screen sizes */
+@media (max-width: 1280px) {
+    .camera-label {
+        font-size: 14px;
+        padding: 6px;
+    }
+    
+    #main-label {
+        font-size: 18px;
+        padding: 8px 16px;
+    }
+    
+    .stream-health {
+        font-size: 10px;
+        padding: 4px 8px;
+    }
+}
+
+/* Samsung TV specific styles */
+@media screen and (-webkit-tv-device) {
+    body {
+        margin: 0;
+        padding: 0;
+    }
+    
+    .camera-container:focus {
+        box-shadow: 0 0 0 6px #4285f4; /* Larger focus indicator for TV */
+    }
+    
+    #remote-feedback {
+        font-size: 30px;
+        padding: 25px 50px;
+    }
+}
+
+/* Dark mode - already dark by default */
+@media (prefers-color-scheme: dark) {
+    /* Already using dark theme */
+}
+
+/* Loading animation */
+.loading {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 50px;
+    height: 50px;
+    border: 5px solid rgba(255, 255, 255, 0.3);
+    border-radius: 50%;
+    border-top-color: white;
+    animation: spin 1s ease-in-out infinite;
+    z-index: 5;
+}
+
+@keyframes spin {
+    to { transform: translate(-50%, -50%) rotate(360deg); }
+}
+
+/* Button styles for future interactive elements */
+.control-button {
+    background-color: rgba(0, 0, 0, 0.6);
+    color: white;
+    border: none;
+    border-radius: 50%;
+    width: 40px;
+    height: 40px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.control-button:hover, .control-button:focus {
+    background-color: rgba(66, 133, 244, 0.8);
+    outline: none;
+}
+
+/* Controls container for future implementations */
+.camera-controls {
+    position: absolute;
+    bottom: 60px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    /* Replace gap with margins on child elements */
+    padding: 10px;
+    background-color: rgba(0, 0, 0, 0.5);
+    border-radius: 30px;
+    z-index: 10;
+    opacity: 0;
+    transition: opacity 0.3s;
+}
+
+/* Add margin to child elements instead of using gap */
+.camera-controls > * {
+    margin: 0 7px;
+}
+
+#single-view:hover .camera-controls,
+.camera-container:hover .camera-controls,
+.camera-controls:focus-within {
+    opacity: 1;
+}
