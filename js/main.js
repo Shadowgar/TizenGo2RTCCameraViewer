@@ -8,6 +8,8 @@ if (!('IntersectionObserver' in window)) {
         this.callback = callback;
         this.options = options || {};
         this.targets = [];
+        this.lastCheckTime = 0;
+        this.checkThrottle = 150; // Throttle checks to every 150ms
         
         // Method to start observing an element
         this.observe = function(target) {
@@ -28,6 +30,10 @@ if (!('IntersectionObserver' in window)) {
         // Method to disconnect the observer
         this.disconnect = function() {
             this.targets = [];
+            if (this.intervalId) {
+                clearInterval(this.intervalId);
+                this.intervalId = null;
+            }
         };
         
         // Method to check visibility
@@ -63,13 +69,24 @@ if (!('IntersectionObserver' in window)) {
             }]);
         };
         
-        // Set up a timer to periodically check visibility
+        // Set up a timer to periodically check visibility with throttling
         var self = this;
-        this.intervalId = setInterval(function() {
+        this.checkAll = function() {
+            var now = Date.now();
+            if (now - self.lastCheckTime < self.checkThrottle) return;
+            
+            self.lastCheckTime = now;
             self.targets.forEach(function(target) {
                 self.checkVisibility(target);
             });
-        }, 250); // Check every 250ms
+        };
+        
+        // Only check on scroll and resize events to reduce CPU usage
+        window.addEventListener('scroll', this.checkAll, { passive: true });
+        window.addEventListener('resize', this.checkAll, { passive: true });
+        
+        // Fallback interval with longer delay
+        this.intervalId = setInterval(this.checkAll, 500);
     };
 }
 
@@ -138,7 +155,16 @@ function setupLazyLoading() {
                 
                 if (!hlsPlayers[streamId] || !hlsPlayers[streamId].media) {
                     console.log("Loading camera: " + streamId);
-                    initializePlayer(videoElement);
+                    // Use requestIdleCallback or setTimeout to defer loading until browser is idle
+                    if (window.requestIdleCallback) {
+                        requestIdleCallback(function() {
+                            initializePlayer(videoElement);
+                        }, { timeout: 1000 });
+                    } else {
+                        setTimeout(function() {
+                            initializePlayer(videoElement);
+                        }, 10);
+                    }
                 } else if (videoElement.paused) {
                     // If player exists but is paused, resume it
                     console.log("Resuming camera: " + streamId);
@@ -148,8 +174,10 @@ function setupLazyLoading() {
                     }
                 }
                 
-                // Preload adjacent cameras for better user experience
-                preloadAdjacentCameras(streamId);
+                // Preload adjacent cameras for better user experience - but only if memory isn't constrained
+                if (!checkMemoryPressure()) {
+                    preloadAdjacentCameras(streamId);
+                }
             } else {
                 // Camera is not visible, unload it if it's not the current single camera
                 console.log("Camera not visible: " + streamId);
@@ -163,13 +191,13 @@ function setupLazyLoading() {
                             console.log("Unloading camera: " + streamId);
                             destroyHlsPlayer(streamId);
                         }
-                    }, 2000); // Reduced from 5 seconds to 2 seconds for faster memory cleanup
+                    }, 1500); // Reduced from 2 seconds to 1.5 seconds for faster memory cleanup
                 }
             }
         });
     }, {
         root: null, // Use viewport as root
-        rootMargin: '50px', // Reduced from 100px to 50px for more precise loading
+        rootMargin: '25px', // Reduced from 50px to 25px for more precise loading
         threshold: 0.1 // Trigger when at least 10% of the camera is visible
     });
     
@@ -251,18 +279,26 @@ function preloadStream(streamId) {
     var tempHls = new Hls({
         maxBufferLength: 0,           // Don't buffer any data
         startLevel: 0,                // Lowest quality
-        manifestLoadingTimeOut: 3000, // Short timeout
+        manifestLoadingTimeOut: 2000, // Shorter timeout for faster preloading
         manifestLoadingMaxRetry: 1,   // Only try once
         enableWorker: false,          // Don't use workers for preloading
+        progressive: true,            // Enable progressive parsing
+        lowLatencyMode: false,        // Disable low latency mode for preloading
+        fragLoadingTimeOut: 0,        // Don't load fragments
+        fragLoadingMaxRetry: 0        // Don't retry fragment loading
     });
     
     // Just load the manifest but don't attach to any media element
     tempHls.loadSource(cameraStreams[streamId]);
     
-    // Destroy after a short time
+    // Destroy after a shorter time
     setTimeout(function() {
-        tempHls.destroy();
-    }, 2000);
+        if (tempHls) {
+            tempHls.stopLoad();
+            tempHls.destroy();
+            tempHls = null;
+        }
+    }, 1000); // Reduced from 2000ms to 1000ms
     return {};
 }
 
@@ -278,35 +314,39 @@ function destroyHlsPlayer(streamId) {
         // Get the video element before destroying the player
         var videoElement = hlsPlayers[streamId].media;
         
-        // Properly clean up the HLS instance
-        hlsPlayers[streamId].stopLoad();
-        hlsPlayers[streamId].detachMedia();
-        hlsPlayers[streamId].destroy();
-        delete hlsPlayers[streamId];
-        
-        // Clean up the video element
-        if (videoElement) {
-            videoElement.pause();
-            videoElement.removeAttribute('src');
-            videoElement.load(); // This triggers the browser to release resources
+        try {
+            // Properly clean up the HLS instance
+            hlsPlayers[streamId].stopLoad();
+            hlsPlayers[streamId].detachMedia();
+            hlsPlayers[streamId].destroy();
             
-            // Reset video element properties
-            videoElement.style.display = 'none';
-            setTimeout(function() {
-                videoElement.style.display = ''; // Restore display after cleanup
-            }, 50);
-        }
-        
-        // Force garbage collection if available
-        if (window.gc) {
-            try {
-                window.gc();
-            } catch (e) {
-                console.log("Manual garbage collection failed");
+            // Clear any references to the HLS instance
+            hlsPlayers[streamId] = null;
+            delete hlsPlayers[streamId];
+            
+            // Reset the video element
+            if (videoElement) {
+                // Pause the video
+                videoElement.pause();
+                
+                // Remove all event listeners
+                videoElement.onplay = null;
+                videoElement.onpause = null;
+                videoElement.onended = null;
+                videoElement.onerror = null;
+                videoElement.onloadeddata = null;
+                videoElement.onloadedmetadata = null;
+                
+                // Clear the source
+                videoElement.removeAttribute('src');
+                videoElement.load();
+                
+                // Apply the aspect ratio fix
+                forceAspectRatio(videoElement);
             }
+        } catch (e) {
+            console.error("Error destroying HLS player: ", e);
         }
-        
-        console.log("Destroyed HLS player for stream: " + streamId);
     }
 }
 
@@ -1460,29 +1500,35 @@ function initializePlayer(videoElement) {
     // Create HLS player if supported
     if (Hls.isSupported()) {
         var hls = new Hls({
-            maxBufferLength: 3,           // Reduced from 5 for faster startup
-            maxMaxBufferLength: 10,       // Reduced from 30
-            manifestLoadingTimeOut: 5000, // Reduced from 8000
-            manifestLoadingMaxRetry: 2,   // Kept at 2
-            levelLoadingTimeOut: 5000,    // Reduced from 8000
-            levelLoadingMaxRetry: 2,      // Kept at 2
-            fragLoadingTimeOut: 5000,     // Reduced from 8000
-            fragLoadingMaxRetry: 2,       // Kept at 2
-            startLevel: 0,                // Start with lowest quality for faster loading
+            maxBufferLength: 2,           // Reduced for faster startup and lower memory usage
+            maxMaxBufferLength: 6,        // Reduced for better memory management
+            manifestLoadingTimeOut: 4000, // Reduced for faster error detection
+            manifestLoadingMaxRetry: 2,   
+            levelLoadingTimeOut: 4000,    // Reduced for faster error detection
+            levelLoadingMaxRetry: 2,      
+            startLevel: -1,               // Auto-select starting level based on bandwidth
             abrEwmaDefaultEstimate: 500000, // Initial bandwidth estimate (500kbps)
-            abrEwmaFastLive: 2,           // Faster ABR algorithm for live streams (reduced from 3)
-            abrEwmaSlowLive: 5,           // Faster ABR algorithm for live streams (reduced from 9)
+            abrEwmaFastLive: 2,           // Faster ABR algorithm for live streams
+            abrEwmaSlowLive: 5,           // Faster ABR algorithm for live streams
             enableWorker: true,           // Use Web Workers for better performance
             lowLatencyMode: true,         // Enable low latency mode
-            backBufferLength: 10,         // Limit back buffer to 10 seconds (reduced from 30)
-            maxBufferHole: 0.3,           // Reduced from default 0.5
-            highBufferWatchdogPeriod: 1,  // Reduced from default 2
-            nudgeMaxRetry: 3,             // Reduced from default 5
-            maxFragLookUpTolerance: 0.2,  // Reduced from default 0.25
-            liveSyncDurationCount: 2,     // Reduced from default 3
-            liveMaxLatencyDurationCount: 5, // Reduced from default 10
-            liveDurationInfinity: false,  // Don't treat live streams as infinite duration
-            maxLiveSyncPlaybackRate: 1.5  // Limit playback rate for catching up with live edge
+            backBufferLength: 5,          // Further reduced back buffer for memory efficiency
+            maxBufferHole: 0.3,           
+            highBufferWatchdogPeriod: 1,  
+            nudgeMaxRetry: 3,             
+            maxFragLookUpTolerance: 0.2,  
+            liveSyncDurationCount: 2,     
+            liveMaxLatencyDurationCount: 4, // Reduced for lower latency
+            liveDurationInfinity: false,  
+            maxLiveSyncPlaybackRate: 1.5,
+            testBandwidth: true,          // Enable bandwidth testing for better quality selection
+            progressive: true,            // Enable progressive parsing for faster startup
+            lowLatencyMode: true,         // Enable low latency mode
+            cmcd: {                       // Add CMCD (Common Media Client Data) for better CDN optimization
+                enabled: true,
+                sessionId: streamId,
+                contentId: streamId
+            }
         });
         
         hls.loadSource(cameraStreams[streamId]);
