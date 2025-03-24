@@ -168,6 +168,13 @@ function playVideoWithErrorHandling(video) {
     }
 }
 
+// Define resumeVideo function
+function resumeVideo(video) {
+    if (video && typeof video.play === 'function') {
+        playVideoWithErrorHandling(video);
+    }
+}
+
 // Function to cycle cameras in ambient mode
 function cycleCameras() {
     currentAmbientCamera = (currentAmbientCamera + 1) % ambientCameras.length;
@@ -485,9 +492,8 @@ function updateStreamHealth(cameraIndex, status) {
 
 // Switch to grid view showing all cameras
 function switchToGridView() {
+    document.getElementById('grid-view').style.display = 'grid';
     document.getElementById('single-view').style.display = 'none';
-    document.getElementById('grid-view').style.display = 'flex';
-    currentMode = 'grid';
     
     // Show all camera containers
     for (var i = 0; i < cameraContainers.length; i++) {
@@ -496,8 +502,8 @@ function switchToGridView() {
     
     // Ensure all grid cameras are playing
     var videos = document.querySelectorAll('#grid-view .camera-feed');
-    for (var i = 0; i < videos.length; i++) {
-        resumeVideo(videos[i]);
+    for (var j = 0; j < videos.length; j++) {
+        resumeVideo(videos[j]);
     }
 }
 
