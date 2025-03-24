@@ -1083,6 +1083,30 @@ function setupRemoteControls() {
             // Add more key handlers as needed
         }
     });
+    
+    // Add click event handlers for UI buttons
+    var backToGridButton = document.getElementById('back-to-grid');
+    if (backToGridButton) {
+        backToGridButton.addEventListener('click', function() {
+            switchToGridView();
+        });
+    }
+    
+    // Add event handlers for other control buttons
+    var previousButton = document.getElementById('previous-camera');
+    if (previousButton) {
+        previousButton.addEventListener('click', switchToPreviousCamera);
+    }
+    
+    var nextButton = document.getElementById('next-camera');
+    if (nextButton) {
+        nextButton.addEventListener('click', switchToNextCamera);
+    }
+    
+    var togglePlayButton = document.getElementById('toggle-play');
+    if (togglePlayButton) {
+        togglePlayButton.addEventListener('click', togglePlayPause);
+    }
 }
 
 function showRemoteFeedback(keyCode) {
