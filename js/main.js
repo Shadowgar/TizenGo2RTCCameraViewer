@@ -495,6 +495,27 @@ function switchToGridView() {
     document.getElementById('grid-view').style.display = 'grid';
     document.getElementById('single-view').style.display = 'none';
     
+    // If we're coming from single view, we need to reattach the HLS player
+    if (currentMode === 'single' && currentSingleCamera) {
+        // Get the HLS instance from the single view
+        var hls = hlsPlayers[currentSingleCamera];
+        if (hls) {
+            // Detach from main feed
+            var mainFeed = document.getElementById('main-feed');
+            hls.detachMedia();
+            
+            // Find the original video element in the grid
+            var gridVideo = document.querySelector('[data-stream="' + currentSingleCamera + '"]');
+            if (gridVideo) {
+                // Reattach to the grid video
+                hls.attachMedia(gridVideo);
+                gridVideo.play().catch(function(error) {
+                    console.error("Error playing video in grid view:", error);
+                });
+            }
+        }
+    }
+    
     // Show all camera containers
     for (var i = 0; i < cameraContainers.length; i++) {
         cameraContainers[i].style.display = 'block';
@@ -505,6 +526,9 @@ function switchToGridView() {
     for (var j = 0; j < videos.length; j++) {
         resumeVideo(videos[j]);
     }
+    
+    // Update the current mode
+    currentMode = 'grid';
 }
 
 // Switch to single camera view
