@@ -172,36 +172,31 @@ html, body {
 }
 
 /* Stream health indicators */
-.stream-health {
+.stream-health-indicator {
     position: absolute;
     top: 10px;
     right: 10px;
     padding: 5px 10px;
     border-radius: 4px;
-    font-size: 12px;
+    font-size: 14px;
     font-weight: bold;
-    opacity: 1;
-    transition: opacity 0.5s ease;
-    z-index: 5;
+    z-index: 10;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+    transition: all 0.3s ease;
 }
 
 .health-good {
-    background-color: rgba(67, 160, 71, 0.8); /* Green */
-    color: white;
-}
-
-.health-medium {
-    background-color: rgba(251, 140, 0, 0.8); /* Orange */
+    background-color: rgba(67, 160, 71, 0.9); /* Green */
     color: white;
 }
 
 .health-poor {
-    background-color: rgba(229, 57, 53, 0.8); /* Red */
+    background-color: rgba(255, 152, 0, 0.9); /* Orange */
     color: white;
 }
 
-.health-bad {
-    background-color: rgba(183, 28, 28, 0.8); /* Dark Red */
+.health-error {
+    background-color: rgba(229, 57, 53, 0.9); /* Red */
     color: white;
 }
 

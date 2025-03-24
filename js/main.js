@@ -325,91 +325,161 @@ window.onload = function() {
 // Initialize a video player with HLS.js
 function initializePlayer(videoElement) {
     var streamId = videoElement.dataset.stream;
+    
     if (!streamId || !cameraStreams[streamId]) {
+        console.error("Invalid stream ID:", streamId);
         return;
     }
-    
-    var streamUrl = cameraStreams[streamId];
     
     // Show loading indicator
     showLoadingIndicator(streamId);
     
-    if (typeof Hls !== 'undefined' && Hls.isSupported()) {
+    // Get the camera index for health monitoring
+    var cameraIndex = -1;
+    for (var i = 0; i < cameraContainers.length; i++) {
+        var video = cameraContainers[i].querySelector('.camera-feed');
+        if (video && video.dataset.stream === streamId) {
+            cameraIndex = i;
+            break;
+        }
+    }
+    
+    // Create HLS player if supported
+    if (Hls.isSupported()) {
         var hls = new Hls({
-            debug: false,
-            autoStartLoad: true,
-            startLevel: -1,
-            capLevelToPlayerSize: true
+            maxBufferLength: 30,
+            maxMaxBufferLength: 60,
+            manifestLoadingTimeOut: 10000,
+            manifestLoadingMaxRetry: 3,
+            levelLoadingTimeOut: 10000,
+            levelLoadingMaxRetry: 3,
+            fragLoadingTimeOut: 10000,
+            fragLoadingMaxRetry: 3
         });
         
-        hls.loadSource(streamUrl);
+        hls.loadSource(cameraStreams[streamId]);
         hls.attachMedia(videoElement);
         
-        // Use the predefined function with parameters
+        // Store the HLS instance for later use
+        hlsPlayers[streamId] = hls;
+        
+        // Set up event handlers
         hls.on(Hls.Events.MANIFEST_PARSED, function() {
             onManifestParsed(videoElement, streamId);
+            
+            // Set stream health to good when manifest is parsed
+            if (cameraIndex !== -1) {
+                updateStreamHealth(cameraIndex, 'good');
+            }
         });
         
-        // Handle errors
         hls.on(Hls.Events.ERROR, function(event, data) {
-            console.error("HLS error on " + streamId + ":", data);
+            console.error("HLS error:", data);
+            
+            // Set stream health to error on fatal errors
+            if (data.fatal && cameraIndex !== -1) {
+                updateStreamHealth(cameraIndex, 'error');
+            }
+            
             if (data.fatal) {
                 switch(data.type) {
                     case Hls.ErrorTypes.NETWORK_ERROR:
-                        console.log("Network error, trying to recover...");
+                        // Try to recover network error
+                        console.log("Fatal network error encountered, trying to recover");
                         hls.startLoad();
                         break;
                     case Hls.ErrorTypes.MEDIA_ERROR:
-                        console.log("Media error, trying to recover...");
+                        console.log("Fatal media error encountered, trying to recover");
                         hls.recoverMediaError();
                         break;
                     default:
-                        console.log("Unrecoverable error, attempting reconnection");
-                        hideLoadingIndicator(streamId); // Hide loading on fatal error
-                        handleStreamError(streamId, data);
+                        // Cannot recover
+                        console.log("Fatal error, cannot recover");
+                        hls.destroy();
+                        delete hlsPlayers[streamId];
+                        handleStreamError(streamId, "Fatal playback error");
                         break;
                 }
             }
         });
         
-        // Add timeout to hide loading indicator after a reasonable time
-        setTimeout(function() {
-            hideLoadingIndicator(streamId);
-        }, 15000); // 15 seconds timeout
-        
-        hlsPlayers[streamId] = hls;
+        // Set up monitoring interval to check video readyState
+        if (cameraIndex !== -1) {
+            setInterval(function() {
+                if (!videoElement.paused) {
+                    if (videoElement.readyState < 3) { // HAVE_FUTURE_DATA = 3
+                        updateStreamHealth(cameraIndex, 'poor');
+                    } else {
+                        updateStreamHealth(cameraIndex, 'good');
+                    }
+                }
+            }, 5000); // Check every 5 seconds
+        }
     }
-    // Fallback to native support
+    // Fallback for browsers without HLS.js support
     else if (videoElement.canPlayType('application/vnd.apple.mpegurl')) {
-        videoElement.src = streamUrl;
+        videoElement.src = cameraStreams[streamId];
         videoElement.addEventListener('loadedmetadata', function() {
-            try {
-                videoElement.play();
-                // Apply aspect ratio correction once video starts playing
-                videoElement.addEventListener('playing', function() {
-                    forceAspectRatio(videoElement);
-                    hideLoadingIndicator(streamId);
-                }, { once: true });
-            } catch(error) {
-                handleVideoError(error, streamId);
+            onManifestParsed(videoElement, streamId);
+            
+            // Set stream health to good
+            if (cameraIndex !== -1) {
+                updateStreamHealth(cameraIndex, 'good');
             }
         });
         
-        // Add timeout to hide loading indicator after a reasonable time
-        setTimeout(function() {
-            hideLoadingIndicator(streamId);
-        }, 15000); // 15 seconds timeout
+        videoElement.addEventListener('error', function(e) {
+            console.error("Video error:", e);
+            handleStreamError(streamId, "Video playback error");
+            
+            // Set stream health to error
+            if (cameraIndex !== -1) {
+                updateStreamHealth(cameraIndex, 'error');
+            }
+        });
+    } else {
+        console.error("HLS is not supported in this browser!");
+        handleStreamError(streamId, "HLS not supported");
     }
 }
 
-// Function to resume a paused video
-function resumeVideo(video) {
-    if (video.paused) {
-        try {
-            video.play();
-        } catch(e) {
-            console.error("Error resuming video", e);
-        }
+// Function to update stream health indicator
+function updateStreamHealth(cameraIndex, status) {
+    // Get the camera container
+    var container = cameraContainers[cameraIndex];
+    if (!container) {
+        console.error("Invalid camera index:", cameraIndex);
+        return;
+    }
+    
+    // Find or create the health indicator
+    var healthIndicator = container.querySelector('.stream-health-indicator');
+    if (!healthIndicator) {
+        healthIndicator = document.createElement('div');
+        healthIndicator.className = 'stream-health-indicator';
+        container.appendChild(healthIndicator);
+    }
+    
+    // Remove all status classes
+    healthIndicator.classList.remove('health-good', 'health-poor', 'health-error');
+    
+    // Set the appropriate status class and text
+    switch(status) {
+        case 'good':
+            healthIndicator.classList.add('health-good');
+            healthIndicator.textContent = 'Good';
+            break;
+        case 'poor':
+            healthIndicator.classList.add('health-poor');
+            healthIndicator.textContent = 'Poor';
+            break;
+        case 'error':
+            healthIndicator.classList.add('health-error');
+            healthIndicator.textContent = 'Error';
+            break;
+        default:
+            healthIndicator.classList.add('health-good');
+            healthIndicator.textContent = 'Good';
     }
 }
 
@@ -418,6 +488,11 @@ function switchToGridView() {
     document.getElementById('single-view').style.display = 'none';
     document.getElementById('grid-view').style.display = 'flex';
     currentMode = 'grid';
+    
+    // Show all camera containers
+    for (var i = 0; i < cameraContainers.length; i++) {
+        cameraContainers[i].style.display = 'block';
+    }
     
     // Ensure all grid cameras are playing
     var videos = document.querySelectorAll('#grid-view .camera-feed');
@@ -442,6 +517,11 @@ function switchToSingleView(cameraId) {
     var label = cameraId.replace('_stream', '');
     label = label.charAt(0).toUpperCase() + label.slice(1); // Capitalize first letter
     mainLabel.textContent = label;
+    
+    // Hide all camera containers in grid view (don't destroy them)
+    for (var i = 0; i < cameraContainers.length; i++) {
+        cameraContainers[i].style.display = 'none';
+    }
     
     // If we already have an HLS instance for this camera, use it
     if (hlsPlayers[cameraId]) {
