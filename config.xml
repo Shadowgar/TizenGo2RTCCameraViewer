@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <widget xmlns="http://www.w3.org/ns/widgets" xmlns:tizen="http://tizen.org/ns/widgets" id="http://yourdomain/Go2RTCCameraViewer" version="1.0.0" viewmodes="maximized">
     <tizen:application id="qe1xb4aO2T.Go2RTCCameraViewer" package="qe1xb4aO2T" required_version="2.3"/>
-    <author href="https://github.com/yourusername" email="rocco.paul@gmail.com">Paul Rocco</author>
+    <author href="https://github.com/Shadowgar/TizenGo2RTCCameraViewer" email="rocco.paul@gmail.com">Paul Rocco</author>
     <content src="index.html"/>
     <description>A camera viewer app that connects to Go2RTC streams.</description>
     <feature name="http://tizen.org/feature/screen.size.normal.1080.1920"/>
