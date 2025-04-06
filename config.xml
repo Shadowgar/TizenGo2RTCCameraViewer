@@ -1,13 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE widget SYSTEM "http://www.w3.org/2006/03/widgets.dtd">
-<widget xmlns:tizen="http://tizen.org/ns/widgets" 
-        xmlns="http://www.w3.org/ns/widgets" 
-        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-        xsi:schemaLocation="http://www.w3.org/ns/widgets http://www.w3.org/2006/03/widgets.xsd
-                            http://tizen.org/ns/widgets https://developer.tizen.org/schemas/tizen-widget-2.3.xsd"
-        id="http://yourdomain/Go2RTCCameraViewer" 
-        version="1.0.0" 
-        viewmodes="maximized">
+<widget xmlns="http://www.w3.org/ns/widgets" xmlns:tizen="http://tizen.org/ns/widgets" id="http://yourdomain/Go2RTCCameraViewer" version="1.0.0" viewmodes="maximized">
     <tizen:application id="qe1xb4aO2T.Go2RTCCameraViewer" package="qe1xb4aO2T" required_version="2.3"/>
     <author href="https://github.com/yourusername" email="rocco.paul@gmail.com">Paul Rocco</author>
     <content src="index.html"/>
