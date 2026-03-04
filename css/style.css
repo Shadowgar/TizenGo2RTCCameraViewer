@@ -1,139 +1,244 @@
+html,
 body {
+    width: 100%;
+    height: 100%;
     margin: 0;
-    background: black;
-    color: white;
-    font-family: sans-serif;
-}
-
-#grid-view {
-    display: flex;
-    flex-wrap: wrap;
-    width: 100%;
-    height: 100%;
-}
-
-.camera-container {
-    position: relative;
-    width: 50%;
-    height: 50%;
-    box-sizing: border-box;
-    border: 1px solid #333;
+    padding: 0;
     overflow: hidden;
+    background: #080a10;
+    color: #eef4ff;
+    font-family: Arial, sans-serif;
 }
 
-.camera-feed {
+* {
+    box-sizing: border-box;
+}
+
+.app-shell,
+.screen {
     width: 100%;
     height: 100%;
-    background: black;
-    object-fit: contain;
 }
 
-.camera-label {
-    position: absolute;
-    bottom: 5px;
-    left: 5px;
-    background: rgba(0,0,0,0.5);
-    padding: 2px 6px;
-    font-size: 14px;
-}
-
-.loading {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    border: 4px solid #f3f3f3;
-    border-top: 4px solid #3498db;
-    border-radius: 50%;
-    width: 30px;
-    height: 30px;
-    animation: spin 1s linear infinite;
-    display: none;
-}
-
-@keyframes spin {
-    0% { transform: translate(-50%, -50%) rotate(0deg); }
-    100% { transform: translate(-50%, -50%) rotate(360deg); }
-}
-
-.stream-health-indicator {
-    position: absolute;
-    top: 5px;
-    right: 5px;
-    background: rgba(0,0,0,0.5);
-    padding: 2px 6px;
-    font-size: 12px;
-}
-
-#single-view {
-    width: 100%;
-    height: 100%;
+.screen {
     position: relative;
-}
-
-#main-label {
-    position: absolute;
-    bottom: 5px;
-    left: 5px;
-    background: rgba(0,0,0,0.5);
-    padding: 2px 6px;
-    font-size: 16px;
-}
-
-#main-loading {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    border: 4px solid #f3f3f3;
-    border-top: 4px solid #3498db;
-    border-radius: 50%;
-    width: 40px;
-    height: 40px;
-    animation: spin 1s linear infinite;
-    display: none;
-}
-
-#remote-feedback {
-    position: absolute;
-    top: 10px;
-    left: 50%;
-    transform: translateX(-50%);
-    background: rgba(0,0,0,0.7);
-    padding: 5px 10px;
-    border-radius: 5px;
-    font-size: 16px;
-    z-index: 1000;
-}
-
-#help-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: rgba(0,0,0,0.8);
-    color: white;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 1000;
-}
-
-.help-content {
-    max-width: 400px;
-    padding: 20px;
-    background: #222;
-    border-radius: 10px;
-    text-align: center;
-}
-
-.help-content button {
-    margin-top: 20px;
-    padding: 8px 16px;
-    font-size: 14px;
 }
 
 .hidden {
-    display: none;
+    display: none !important;
+}
+
+.top-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    height: 96px;
+    padding: 24px 40px 12px;
+}
+
+.app-title {
+    margin: 0;
+    font-size: 38px;
+    font-weight: 700;
+}
+
+.backend-info {
+    max-width: 45%;
+    text-align: right;
+    color: #92a2bf;
+    font-size: 20px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.camera-grid {
+    height: calc(100% - 156px);
+    padding: 14px 40px 14px;
+    display: grid;
+    gap: 20px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-rows: repeat(2, minmax(0, 1fr));
+}
+
+.camera-tile {
+    position: relative;
+    border: 2px solid #324059;
+    border-radius: 16px;
+    background: linear-gradient(160deg, #0f1726 0%, #0c111a 100%);
+    padding: 22px;
+    transition: border-color 120ms linear;
+}
+
+.camera-tile.focused {
+    border-color: #5db3ff;
+}
+
+.camera-tile.running {
+    border-color: #2e9347;
+}
+
+.camera-tile.focused.running {
+    border-color: #4dd67a;
+}
+
+.tile-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 14px;
+}
+
+.tile-name {
+    font-size: 34px;
+    font-weight: 700;
+}
+
+.tile-live {
+    padding: 5px 10px;
+    border-radius: 999px;
+    font-size: 16px;
+    letter-spacing: 0.8px;
+    font-weight: 700;
+    color: #9fb6da;
+    border: 1px solid #3b4f72;
+}
+
+.tile-live.live {
+    color: #cfffe0;
+    border-color: #36bf66;
+    background: rgba(54, 191, 102, 0.18);
+}
+
+.tile-status {
+    margin-top: 30px;
+    font-size: 28px;
+    color: #c5d3ea;
+}
+
+.tile-updated {
+    position: absolute;
+    left: 22px;
+    right: 22px;
+    bottom: 18px;
+    color: #8fa2c3;
+    font-size: 18px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.grid-help {
+    position: absolute;
+    left: 40px;
+    right: 40px;
+    bottom: 10px;
+    color: #7f95b8;
+    font-size: 20px;
+}
+
+.avplay-surface {
+    position: absolute;
+    inset: 0;
+    background: #000;
+}
+
+.player-hud {
+    position: absolute;
+    top: 26px;
+    left: 30px;
+    right: 30px;
+    padding: 16px 18px;
+    border-radius: 12px;
+    background: rgba(0, 0, 0, 0.52);
+    transition: opacity 120ms linear;
+    z-index: 10;
+}
+
+.hud-title-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.hud-camera-name {
+    font-size: 40px;
+    font-weight: 700;
+}
+
+.hud-clock {
+    font-size: 30px;
+    color: #d0d8e9;
+}
+
+.hud-status {
+    margin-top: 8px;
+    font-size: 24px;
+    color: #c6d7f6;
+}
+
+.center-badge {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    padding: 15px 28px;
+    border-radius: 12px;
+    font-size: 28px;
+    background: rgba(0, 0, 0, 0.7);
+    z-index: 12;
+}
+
+.player-error {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: 860px;
+    max-width: calc(100% - 80px);
+    padding: 24px;
+    border-radius: 16px;
+    border: 1px solid #6b2630;
+    background: rgba(28, 9, 14, 0.94);
+    z-index: 20;
+}
+
+.player-error-message {
+    font-size: 28px;
+    line-height: 1.35;
+    margin-bottom: 20px;
+}
+
+.error-actions {
+    display: flex;
+    gap: 16px;
+}
+
+.error-action {
+    min-width: 180px;
+    border-radius: 999px;
+    border: 2px solid #58739d;
+    background: transparent;
+    color: #eaf1ff;
+    font-size: 24px;
+    font-weight: 700;
+    padding: 12px 18px;
+}
+
+.error-action.focused {
+    border-color: #5db3ff;
+}
+
+.toast {
+    position: absolute;
+    left: 50%;
+    bottom: 34px;
+    transform: translateX(-50%);
+    max-width: 70%;
+    padding: 10px 18px;
+    border-radius: 999px;
+    background: rgba(0, 0, 0, 0.74);
+    color: #dde8ff;
+    font-size: 20px;
+    z-index: 40;
 }

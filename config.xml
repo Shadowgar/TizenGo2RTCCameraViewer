@@ -1,35 +1,23 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<widget xmlns="http://www.w3.org/ns/widgets" xmlns:tizen="http://tizen.org/ns/widgets" id="http://yourdomain/Go2RTCCameraViewer" version="1.0.0" viewmodes="maximized">
-    <tizen:application id="qe1xb4aO2T.Go2RTCCameraViewer" package="qe1xb4aO2T" required_version="2.3"/>
+<widget xmlns="http://www.w3.org/ns/widgets" xmlns:tizen="http://tizen.org/ns/widgets" id="http://github.com/Shadowgar/TizenGo2RTCCameraViewer" version="2.0.0" viewmodes="maximized">
+    <tizen:application id="qe1xb4aO2T.Go2RTCCameraViewer" package="qe1xb4aO2T" required_version="5.5"/>
     <author href="https://github.com/Shadowgar/TizenGo2RTCCameraViewer" email="rocco.paul@gmail.com">Paul Rocco</author>
     <content src="index.html"/>
-    <description>A camera viewer app that connects to Go2RTC streams.</description>
-    <feature name="http://tizen.org/feature/screen.size.normal.1080.1920"/>
+    <description>Samsung Tizen TV 4-camera live viewer using camera-bridge and AVPlay HLS playback.</description>
+    <name>Tizen Camera Viewer</name>
+    <icon src="icon.png"/>
+
+    <feature name="http://tizen.org/feature/screen.size.all"/>
     <feature name="http://tizen.org/feature/network.wifi"/>
     <feature name="http://tizen.org/feature/network.internet"/>
-    <feature name="http://tizen.org/feature/multimedia.transcoding"/>
-    <feature name="http://tizen.org/feature/media.video_recording"/>
-    <feature name="http://tizen.org/feature/media.audio_recording"/>
-    <feature name="http://tizen.org/feature/media.video_codec.h264"/>
-    <feature name="http://tizen.org/feature/media.audio_codec.aac"/>
-    <feature name="http://tizen.org/feature/media.audio_codec.mp3"/>
-    <feature name="http://tizen.org/feature/media.audio_codec.flac"/>
-    <feature name="http://tizen.org/feature/screen.size.all"/>
-    <feature name="http://tizen.org/feature/tv.audio"/>
     <feature name="http://tizen.org/feature/tv.input.remote"/>
-    <icon src="icon.png"/>
-    <license>MIT</license>
-    <name>Camera Viewer</name>
+
+    <access origin="*" subdomains="true"/>
+    <tizen:allow-navigation>*</tizen:allow-navigation>
+
     <tizen:privilege name="http://tizen.org/privilege/internet"/>
     <tizen:privilege name="http://tizen.org/privilege/tv.inputdevice"/>
-    <tizen:privilege name="http://tizen.org/privilege/tv.display"/>
-    <tizen:privilege name="http://tizen.org/privilege/application.launch"/>
-    <tizen:privilege name="http://tizen.org/privilege/tv.audio"/>
-    <tizen:privilege name="http://tizen.org/privilege/fullscreen"/>
-    <tizen:privilege name="http://tizen.org/privilege/display"/>
-    <tizen:privilege name="http://tizen.org/privilege/download"/>
-    <tizen:privilege name="http://developer.samsung.com/privilege/network.public"/>
-    <tizen:privilege name="http://developer.samsung.com/privilege/tvaudio"/>
+
     <tizen:profile name="tv-samsung"/>
-    <tizen:setting screen-orientation="landscape" context-menu="enable" background-support="enable" encryption="disable" install-location="auto" hwkey-event="enable" sound-mode="shared"/>
+    <tizen:setting screen-orientation="landscape" context-menu="disable" background-support="disable" encryption="disable" install-location="auto" hwkey-event="enable"/>
 </widget>

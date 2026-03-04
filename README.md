@@ -1,76 +1,92 @@
-# TizenGo2RTCCameraViewer
+# TizenGo2RTCCameraViewer (AVPlay Edition)
 
-A Samsung Tizen TV application for viewing and managing IP camera streams using Go2RTC as the backend streaming server.
+Samsung Tizen TV web app (JavaScript) for a robust 4-camera live viewer using:
 
-## Overview
+- `camera-bridge` (`/tizen/bootstrap-lite`, `/tizen/poll`, `/tizen/open`)
+- MediaMTX HLS output (`index.m3u8`)
+- Samsung AVPlay API (`webapis.avplay`) for playback
 
-TizenGo2RTCCameraViewer is a web-based application designed for Samsung Tizen TVs that allows users to view multiple camera streams simultaneously in a grid layout or focus on a single camera in full-screen mode. The application connects to a Go2RTC server to receive and display camera streams using HLS (HTTP Live Streaming) technology.
+## Architecture
 
-## Features
+Pipeline:
 
-- **Multi-Camera Grid View**: View multiple camera streams simultaneously
-- **Single Camera View**: Focus on one camera in full-screen mode
-- **Remote Control Navigation**: Easy navigation using the Samsung TV remote
-- **Ambient Mode Support**: Special display mode when the TV is in ambient mode
-- **Adaptive Streaming**: Adjusts video quality based on network conditions
-- **Stream Health Monitoring**: Visual indicators for stream health status
-- **Auto-Reconnection**: Automatically attempts to reconnect to lost streams
-- **Optimized Performance**: Efficient resource usage for smooth playback
+`Night Owl DVRIP -> go2rtc -> (optional repair publisher) -> MediaMTX -> HLS -> Tizen AVPlay`
 
-## Requirements
+This app does **not** contain DVR credentials. All sensitive config stays on the Raspberry Pi backend.
 
-- Samsung Tizen TV (2.3 or higher)
-- Go2RTC server running on your network
-- IP cameras configured in Go2RTC
-- Network connectivity between TV and Go2RTC server
+## App Modes
 
-## Installation
+1. **GRID mode**
+     - 2x2 camera tiles: Driveway, Backyard, Frontyard, Backdeck
+     - Per-tile `LIVE/IDLE`, status, and last update timestamp
+     - D-pad focus border
 
-1. Clone this repository or download the source code
-2. Open the project in Tizen Studio
-3. Configure your camera streams in the `main.js` file
-4. Build the project for your target device
-5. Install the resulting .wgt file on your Samsung TV using the Tizen Studio Device Manager or Developer Mode
+2. **PLAYER mode**
+     - Fullscreen AVPlay HLS playback
+     - HUD with camera name, status, and clock
+     - Playback error overlay with `Retry` and `Back`
+     - Auto-retry with exponential backoff
+
+## Remote Keys
+
+- **Arrows (GRID)**: move focus
+- **Enter/OK**: open selected camera in PLAYER
+- **Back/Return (PLAYER)**: back to GRID (clean AVPlay stop/close)
+- **Back/Return (GRID)**: press twice quickly to exit app
+- **Long Return / Exit key**: exits app (mapped via `Exit` key)
+- **Play/Pause**: toggle pause/resume in PLAYER
+- **Up/Down (PLAYER)**: toggle HUD visibility
 
 ## Configuration
 
-Edit the `cameraStreams` object in `js/main.js` to configure your camera streams:
+Base URLs are configurable via `localStorage` (recommended, no credentials in source):
+
+- `TVAPP_BRIDGE_URL` (default: `http://openclaw.local:8090`)
+- `TVAPP_MEDIAMTX_URL` (default: `http://openclaw.local:8889`)
+
+You can set these from a browser console before packaging tests:
 
 ```javascript
-var cameraStreams = {
-    camera1: 'http://your-go2rtc-server:1984/api/stream.m3u8?src=camera1&mp4=flac',
-    camera2: 'http://your-go2rtc-server:1984/api/stream.m3u8?src=camera2&mp4=flac',
-    // Add more cameras as needed
-};
+localStorage.setItem("TVAPP_BRIDGE_URL", "http://openclaw.local:8090");
+localStorage.setItem("TVAPP_MEDIAMTX_URL", "http://openclaw.local:8889");
 ```
 
-## Usage
+## Backend Contract Used
 
-- Use the arrow keys on your remote to navigate between cameras
-- Press Enter/OK to switch between grid view and single camera view
-- Press Back to return to grid view from single camera view
-- Press Play/Pause to toggle video playback
+- `GET /tizen/bootstrap-lite`
+  - Reads `poll_url`, `poll_interval_ms`, `startup_grace_ms`, `state_version`, cameras
+- `GET /tizen/poll?since=<state_version>`
+  - If `changed=true`, applies payload state
+- `POST /tizen/open` with body:
+  - `{ "camera": "driveway", "mode": "main" }`
+  - Expects `playback.hls_url` in response and uses it directly
 
-## Go2RTC Integration
+## Project Structure
 
-This application is designed to work with [Go2RTC](https://github.com/AlexxIT/go2rtc), an excellent streaming server that supports various protocols and can connect to many different camera types. Go2RTC converts your camera streams to HLS format, which is compatible with Samsung Tizen TVs.
+```text
+config.xml
+index.html
+css/
+    style.css
+js/
+    app.js
+    api.js
+    player.js
+    state.js
+    ui-grid.js
+    ui-player.js
+```
 
-## Troubleshooting
+## Build & Run (Tizen Studio)
 
-- **Streams not loading**: Ensure your Go2RTC server is accessible from your TV's network
-- **Playback issues**: Check network connectivity and Go2RTC server logs
-- **Performance problems**: Reduce the number of simultaneous streams or lower stream quality
+1. Open this folder in Tizen Studio.
+2. Ensure TV certificate profile is configured.
+3. Connect TV (Developer Mode + same network).
+4. Right click project -> **Build Signed Package**.
+5. Run on target device from Device Manager / Run As.
 
-## License
+## Notes
 
-MIT License
-
-## Author
-
-Paul Rocco
-
-## Acknowledgements
-
-- [Go2RTC](https://github.com/AlexxIT/go2rtc) for the streaming server
-- [HLS.js](https://github.com/video-dev/hls.js/) for HLS playback in the browser
-- Samsung Tizen development community
+- AVPlay requires Samsung Tizen TV runtime (`$WEBAPIS/webapis/webapis.js`).
+- HLS URL should point to MediaMTX multivariant playlist (`.../index.m3u8`).
+- No `hls.js` is used.
