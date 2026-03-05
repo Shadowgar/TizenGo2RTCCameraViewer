@@ -18,6 +18,7 @@
     };
 
     var listeners = [];
+    var runtimeConfig = global.TVAppConfig || {};
 
     var state = {
         mode: "GRID",
@@ -28,8 +29,8 @@
         pollUrl: "/tizen/poll",
         pollIntervalMs: 2500,
         startupGraceMs: 1500,
-        bridgeBaseUrl: safeGetStorage(STORAGE_KEYS.bridgeBaseUrl) || "http://openclaw.local:8090",
-        mediamtxBaseUrl: safeGetStorage(STORAGE_KEYS.mediamtxBaseUrl) || "http://openclaw.local:8889",
+        bridgeBaseUrl: safeGetStorage(STORAGE_KEYS.bridgeBaseUrl) || runtimeConfig.bridgeBaseUrl || "http://openclaw.local:8090",
+        mediamtxBaseUrl: safeGetStorage(STORAGE_KEYS.mediamtxBaseUrl) || runtimeConfig.mediamtxBaseUrl || "http://openclaw.local:8889",
         cameras: {}
     };
 
