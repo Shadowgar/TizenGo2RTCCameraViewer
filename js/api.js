@@ -39,8 +39,8 @@
             throw new Error("Invalid /tizen/bootstrap-lite payload: poll_interval_ms must be a number");
         }
 
-        if (!Array.isArray(payload.cameras)) {
-            throw new Error("Invalid /tizen/bootstrap-lite payload: cameras[] is required");
+        if (!Array.isArray(payload.cameras) && (!payload.cameras || typeof payload.cameras !== "object")) {
+            throw new Error("Invalid /tizen/bootstrap-lite payload: cameras[]/object is required");
         }
     }
 
@@ -146,6 +146,7 @@
                             var retriable = response.status >= 500 || response.status === 429;
                             throw {
                                 retriable: retriable,
+                                status: response.status,
                                 message: "HTTP " + response.status + " from " + options.url
                             };
                         }

@@ -131,6 +131,8 @@
         var statusValue = entry.status || entry.state || target.status || "UNKNOWN";
         if (!entry.status && !entry.state && typeof entry.ready === "boolean") {
             statusValue = entry.ready ? "READY" : "STOPPED";
+        } else if (!entry.status && !entry.state && entry.preferred_url && target.status === "UNKNOWN") {
+            statusValue = "READY";
         }
         target.status = String(statusValue).toUpperCase();
 
@@ -139,7 +141,7 @@
         } else if (typeof entry.ready === "boolean") {
             target.running = entry.ready;
         } else {
-            target.running = /RUNNING|LIVE|PLAYING/i.test(target.status);
+            target.running = /READY|RUNNING|LIVE|PLAYING/i.test(target.status);
         }
 
         target.updatedAt = entry.updated_at || entry.updatedAt || target.updatedAt || nowIso();
@@ -328,6 +330,22 @@
             }
             state.cameras[key].playback.main = hlsUrl || state.cameras[key].playback.main;
             emit("camera", state.cameras[key]);
+        },
+
+        setAllCameraStatus: function (status, isRunning) {
+            var normalizedStatus = String(status || "UNKNOWN").toUpperCase();
+            var running = !!isRunning;
+
+            Object.keys(state.cameras).forEach(function (name) {
+                state.cameras[name].status = normalizedStatus;
+                state.cameras[name].running = running;
+                state.cameras[name].updatedAt = nowIso();
+            });
+
+            emit("state", {
+                cameras: state.cameras,
+                state_updated_at: state.stateUpdatedAt
+            });
         },
 
         isCameraRunning: function (name) {

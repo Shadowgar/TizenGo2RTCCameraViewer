@@ -27,7 +27,9 @@
     var debugContent;
 
     var pollTimer = null;
+    var bootstrapRetryTimer = null;
     var pollBackoffStep = 0;
+    var bootstrapBackoffStep = 0;
     var pollInFlight = false;
     var openRequestToken = 0;
     var lastBackPressAt = 0;
@@ -466,6 +468,15 @@
         pollTimer = setTimeout(runPollCycle, delay);
     }
 
+    function scheduleBootstrapRetry() {
+        clearTimeout(bootstrapRetryTimer);
+
+        var delay = Math.min(30000, 1000 * Math.pow(2, bootstrapBackoffStep));
+        bootstrapRetryTimer = setTimeout(function () {
+            bootstrap();
+        }, delay);
+    }
+
     function runPollCycle() {
         if (pollInFlight) {
             scheduleNextPoll();
@@ -473,6 +484,7 @@
         }
 
         pollInFlight = true;
+        var triggeredResync = false;
 
         TVApi.poll(TVAppState.getStateVersion(), TVAppState.getPollUrl())
             .then(function (response) {
@@ -484,11 +496,22 @@
 
                 pollBackoffStep = 0;
             }, function (error) {
+                if (error && error.status === 422) {
+                    console.warn("Poll state out of sync, re-running bootstrap");
+                    triggeredResync = true;
+                    bootstrapBackoffStep = 0;
+                    bootstrap();
+                    return;
+                }
+
                 pollBackoffStep = Math.min(pollBackoffStep + 1, 5);
                 console.warn("Polling failed", error);
             })
             .then(function () {
                 pollInFlight = false;
+                if (triggeredResync) {
+                    return;
+                }
                 maybeRecoverPlaybackAfterPoll();
                 renderGrid();
                 scheduleNextPoll();
@@ -511,6 +534,7 @@
 
     function exitApp() {
         clearTimeout(pollTimer);
+        clearTimeout(bootstrapRetryTimer);
         clearTimeout(playbackRetryTimer);
         clearTimeout(resizeRectTimer);
         clearInterval(debugRefreshTimer);
@@ -529,18 +553,23 @@
     }
 
     function bootstrap() {
+        clearTimeout(bootstrapRetryTimer);
+
         TVApi.getBootstrapLite()
             .then(function (bootstrapData) {
                 TVAppState.applyBackendState(bootstrapData);
+                bootstrapBackoffStep = 0;
                 updateBackendInfo();
                 renderGrid();
                 showToast("Connected");
                 scheduleNextPoll();
             }, function (error) {
                 console.error("Bootstrap failed", error);
-                showToast("Bootstrap failed. Retrying...");
-                pollBackoffStep = Math.min(pollBackoffStep + 1, 5);
-                scheduleNextPoll();
+                bootstrapBackoffStep = Math.min(bootstrapBackoffStep + 1, 5);
+                TVAppState.setAllCameraStatus("BACKEND_UNREACHABLE", false);
+                renderGrid();
+                showToast("Bridge unavailable. Retrying bootstrap...");
+                scheduleBootstrapRetry();
             });
     }
 
