@@ -37,6 +37,7 @@
         var width = Math.max(
             1,
             Math.floor(
+                (global.screen && global.screen.availWidth) ||
                 global.innerWidth ||
                 (global.document && global.document.documentElement && global.document.documentElement.clientWidth) ||
                 1920
@@ -45,6 +46,7 @@
         var height = Math.max(
             1,
             Math.floor(
+                (global.screen && global.screen.availHeight) ||
                 global.innerHeight ||
                 (global.document && global.document.documentElement && global.document.documentElement.clientHeight) ||
                 1080
@@ -136,7 +138,7 @@
                     applyDisplayRect();
 
                     try {
-                        player.setDisplayMethod("PLAYER_DISPLAY_MODE_AUTO_ASPECT_RATIO");
+                        player.setDisplayMethod("PLAYER_DISPLAY_MODE_FULL_SCREEN");
                     } catch (displayMethodError) {
                         console.warn("Unable to set display method", displayMethodError);
                     }
@@ -150,6 +152,16 @@
                     player.prepareAsync(function () {
                         try {
                             player.play();
+
+                            // Some Tizen models need a second rect/method apply after play() to
+                            // bring the AVPlay plane above an initially black compositor state.
+                            try {
+                                applyDisplayRect();
+                                player.setDisplayMethod("PLAYER_DISPLAY_MODE_FULL_SCREEN");
+                            } catch (postPlayDisplayError) {
+                                console.warn("Unable to apply post-play display settings", postPlayDisplayError);
+                            }
+
                             resolve();
                         } catch (playError) {
                             reject(playError);

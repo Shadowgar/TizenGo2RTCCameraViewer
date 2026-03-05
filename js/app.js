@@ -11,6 +11,7 @@
         RIGHT: 39,
         DOWN: 40,
         ENTER: 13,
+        GREEN: 404,
         YELLOW: 405,
         RETURN: 10009,
         EXIT: 10182,
@@ -23,7 +24,9 @@
     var playerScreen;
     var backendInfo;
     var toast;
+    var telemetryStrip;
     var debugPanel;
+    var debugTitle;
     var debugContent;
 
     var pollTimer = null;
@@ -35,16 +38,198 @@
     var lastBackPressAt = 0;
     var playbackRetryTimer = null;
     var playbackRetryAttempt = 0;
+    var firstFrameWatchTimer = null;
+    var lastPlayTimeTick = 0;
     var resizeRectTimer = null;
+    var diagnosticsTimer = null;
     var debugRefreshTimer = null;
     var debugVisible = false;
     var playerHasActiveStream = false;
     var pollPlaybackRecoverInFlight = false;
 
     var MAX_AUTO_PLAYBACK_RETRIES = 4;
+    var BACKEND_UNREACHABLE_THRESHOLD = 3;
+
+    var diagnostics = {
+        operations: {
+            bootstrap: emptyOpStats(),
+            poll: emptyOpStats(),
+            open: emptyOpStats(),
+            viewStatus: emptyOpStats(),
+            diagQuick: emptyOpStats(),
+            diagDeep: emptyOpStats(),
+            resolveHls: emptyOpStats(),
+            avplay: emptyOpStats()
+        },
+        recentEvents: [],
+        lastViewStatus: null,
+        lastDiagQuick: null,
+        lastDiagDeep: null
+    };
 
     function byId(id) {
         return document.getElementById(id);
+    }
+
+    function emptyOpStats() {
+        return {
+            ok: 0,
+            fail: 0,
+            consecutiveFail: 0,
+            lastDurationMs: 0,
+            lastOkAt: null,
+            lastFailAt: null,
+            lastError: "",
+            lastStatus: null,
+            lastDetail: ""
+        };
+    }
+
+    function nowIso() {
+        return new Date().toISOString();
+    }
+
+    function shortError(error) {
+        if (!error) {
+            return "unknown";
+        }
+
+        if (error.message) {
+            return error.message;
+        }
+
+        return String(error);
+    }
+
+    function opStart() {
+        return Date.now();
+    }
+
+    function pushDiagEvent(level, text) {
+        diagnostics.recentEvents.unshift({
+            at: nowIso(),
+            level: level,
+            text: text
+        });
+
+        if (diagnostics.recentEvents.length > 60) {
+            diagnostics.recentEvents.length = 60;
+        }
+
+        updateTelemetryStrip();
+        renderDebugSnapshot();
+    }
+
+    function markOpSuccess(name, startedAt, detail) {
+        var op = diagnostics.operations[name];
+        if (!op) {
+            return;
+        }
+
+        op.ok += 1;
+        op.consecutiveFail = 0;
+        op.lastDurationMs = Math.max(0, Date.now() - startedAt);
+        op.lastOkAt = nowIso();
+        op.lastError = "";
+        op.lastStatus = null;
+        op.lastDetail = detail || "";
+
+        updateTelemetryStrip();
+        renderDebugSnapshot();
+    }
+
+    function markOpFailure(name, startedAt, error, detail) {
+        var op = diagnostics.operations[name];
+        if (!op) {
+            return;
+        }
+
+        op.fail += 1;
+        op.consecutiveFail += 1;
+        op.lastDurationMs = Math.max(0, Date.now() - startedAt);
+        op.lastFailAt = nowIso();
+        op.lastError = shortError(error);
+        op.lastStatus = error && error.status ? error.status : null;
+        op.lastDetail = detail || "";
+
+        pushDiagEvent("ERROR", name + " failed: " + op.lastError);
+    }
+
+    function latestErrorSummary() {
+        var i;
+        for (i = 0; i < diagnostics.recentEvents.length; i += 1) {
+            if (diagnostics.recentEvents[i].level === "ERROR") {
+                return diagnostics.recentEvents[i].text;
+            }
+        }
+        return "none";
+    }
+
+    function updateTelemetryStrip() {
+        if (!telemetryStrip) {
+            return;
+        }
+
+        var b = diagnostics.operations.bootstrap;
+        var p = diagnostics.operations.poll;
+        var o = diagnostics.operations.open;
+        telemetryStrip.textContent = [
+            "B " + b.ok + "/" + b.fail,
+            "P " + p.ok + "/" + p.fail,
+            "O " + o.ok + "/" + o.fail,
+            "Last: " + latestErrorSummary()
+        ].join(" | ");
+    }
+
+    function renderDebugSnapshot() {
+        if (!debugVisible || !debugContent) {
+            return;
+        }
+
+        var cameras = TVAppState.getCameras();
+        var cameraSummary = {};
+        Object.keys(cameras).forEach(function (name) {
+            cameraSummary[name] = {
+                status: cameras[name].status,
+                running: cameras[name].running,
+                debug: cameras[name].debugInfo,
+                updatedAt: cameras[name].updatedAt
+            };
+        });
+
+        var snapshot = {
+            generated_at: nowIso(),
+            mode: TVAppState.getMode(),
+            bridge: TVAppState.getBridgeBaseUrl(),
+            poll_url: TVAppState.getPollUrl(),
+            state_version: TVAppState.getStateVersion(),
+            operations: diagnostics.operations,
+            cameras: cameraSummary,
+            last_view_status: diagnostics.lastViewStatus,
+            last_diag_quick: diagnostics.lastDiagQuick,
+            last_diag_deep: diagnostics.lastDiagDeep,
+            recent_events: diagnostics.recentEvents.slice(0, 20)
+        };
+
+        debugContent.textContent = JSON.stringify(snapshot, null, 2);
+    }
+
+    function applyViewStatusToTiles(payload) {
+        if (!payload || !payload.cameras || typeof payload.cameras !== "object") {
+            return;
+        }
+
+        Object.keys(payload.cameras).forEach(function (cameraName) {
+            var item = payload.cameras[cameraName] || {};
+            var debugText = [
+                "run=" + (item.running ? "1" : "0"),
+                "pid=" + (item.pid === undefined || item.pid === null ? "-" : item.pid),
+                "exit=" + (item.last_exit_code === undefined || item.last_exit_code === null ? "-" : item.last_exit_code),
+                "rst=" + (item.restart_count === undefined || item.restart_count === null ? "-" : item.restart_count)
+            ].join(" ");
+
+            TVAppState.setCameraDebugInfo(cameraName, debugText);
+        });
     }
 
     function showToast(text, durationMs) {
@@ -63,6 +248,7 @@
     function updateBackendInfo() {
         var bridge = TVAppState.getBridgeBaseUrl();
         backendInfo.textContent = "Bridge: " + bridge;
+        updateTelemetryStrip();
     }
 
     function renderGrid() {
@@ -77,6 +263,9 @@
         }
 
         debugPanel.classList.toggle("hidden", !debugVisible);
+        if (debugTitle) {
+            debugTitle.textContent = "Bridge Diagnostics (Yellow: close, Green: deep probe)";
+        }
 
         if (!debugVisible) {
             clearInterval(debugRefreshTimer);
@@ -84,34 +273,77 @@
             return;
         }
 
-        refreshDebugPanel();
+        renderDebugSnapshot();
+        refreshDebugPanel({ deepProbe: false });
         clearInterval(debugRefreshTimer);
-        debugRefreshTimer = setInterval(refreshDebugPanel, 15000);
+        debugRefreshTimer = setInterval(function () {
+            refreshDebugPanel({ deepProbe: false });
+        }, 10000);
     }
 
-    function refreshDebugPanel() {
-        if (!debugVisible || !debugContent) {
-            return;
-        }
+    function fetchViewStatus() {
+        var startedAt = opStart();
+        return TVApi.getViewStatus().then(function (payload) {
+            diagnostics.lastViewStatus = payload;
+            markOpSuccess("viewStatus", startedAt, "active=" + (payload && payload.active_camera ? payload.active_camera : "none"));
+            applyViewStatusToTiles(payload);
+            return payload;
+        }, function (error) {
+            markOpFailure("viewStatus", startedAt, error);
+            TVAppState.setAllCameraDebugInfo("view/status err: " + shortError(error));
+            throw error;
+        });
+    }
 
-        debugContent.textContent = "Loading /diag/streams...";
+    function fetchDiagQuick() {
+        var startedAt = opStart();
+        return TVApi.getDiagStreams({
+            timeoutMs: 7000
+        }).then(function (payload) {
+            diagnostics.lastDiagQuick = payload;
+            markOpSuccess("diagQuick", startedAt, "ok");
+            return payload;
+        }, function (error) {
+            markOpFailure("diagQuick", startedAt, error);
+            throw error;
+        });
+    }
 
-        TVApi.getDiagStreams({
+    function fetchDiagDeep() {
+        var startedAt = opStart();
+        return TVApi.getDiagStreams({
             startPublishers: true,
             probe: true,
-            probeTimeoutSeconds: 25
+            probeTimeoutSeconds: 25,
+            timeoutMs: 32000
         }).then(function (payload) {
-            if (!debugVisible || !debugContent) {
-                return;
-            }
-
-            debugContent.textContent = JSON.stringify(payload, null, 2);
+            diagnostics.lastDiagDeep = payload;
+            markOpSuccess("diagDeep", startedAt, "probe");
+            return payload;
         }, function (error) {
-            if (!debugVisible || !debugContent) {
-                return;
-            }
+            markOpFailure("diagDeep", startedAt, error);
+            throw error;
+        });
+    }
 
-            debugContent.textContent = "diag/streams failed: " + (error && error.message ? error.message : "unknown error");
+    function refreshDebugPanel(options) {
+        options = options || {};
+
+        fetchViewStatus().catch(function () {
+            return null;
+        }).then(function () {
+            return fetchDiagQuick().catch(function () {
+                return null;
+            });
+        }).then(function () {
+            if (options.deepProbe) {
+                return fetchDiagDeep().catch(function () {
+                    return null;
+                });
+            }
+            return null;
+        }).then(function () {
+            renderDebugSnapshot();
         });
     }
 
@@ -128,11 +360,27 @@
         });
     }
 
+    function requestOpen(cameraName) {
+        var startedAt = opStart();
+        return TVApi.openCamera(cameraName).then(function (payload) {
+            markOpSuccess("open", startedAt, cameraName + " ready=" + (!!payload.ready));
+            TVAppState.setCameraDebugInfo(cameraName, "open ok ready=" + (!!payload.ready));
+            return payload;
+        }, function (error) {
+            markOpFailure("open", startedAt, error, cameraName);
+            TVAppState.setCameraDebugInfo(cameraName, "open err: " + shortError(error));
+            throw error;
+        });
+    }
+
     function switchToGrid() {
         TVAppState.setMode("GRID");
         playerScreen.classList.add("hidden");
         gridScreen.classList.remove("hidden");
         playerHasActiveStream = false;
+        clearTimeout(firstFrameWatchTimer);
+        firstFrameWatchTimer = null;
+        lastPlayTimeTick = 0;
 
         PlayerUI.exit();
         TVPlayer.stopAndClose();
@@ -261,7 +509,7 @@
         PlayerUI.showLoading(true);
         PlayerUI.setStatus("Requesting stream...");
 
-        var openPromise = shouldReopen ? TVApi.openCamera(cameraName) : Promise.resolve(null);
+        var openPromise = shouldReopen ? requestOpen(cameraName) : Promise.resolve(null);
 
         return openPromise
             .then(function (openResponse) {
@@ -308,7 +556,7 @@
                     }
 
                     PlayerUI.setStatus("Still starting... retrying open");
-                    return TVApi.openCamera(cameraName).then(function (retryResponse) {
+                    return requestOpen(cameraName).then(function (retryResponse) {
                         ensureToken();
                         mergeOpenResponseIntoState(retryResponse);
 
@@ -351,10 +599,18 @@
                 }
 
                 PlayerUI.setStatus("Resolving stream...");
+                var resolveStartedAt = opStart();
                 return resolvePlayableHlsUrl(hlsUrl).then(function (resolvedHlsUrl) {
                     ensureToken();
+                    markOpSuccess("resolveHls", resolveStartedAt, (resolvedHlsUrl || hlsUrl));
                     PlayerUI.setStatus("Starting AVPlay...");
-                    return TVPlayer.play(resolvedHlsUrl || hlsUrl);
+                    var avplayStartedAt = opStart();
+                    return TVPlayer.play(resolvedHlsUrl || hlsUrl).then(function () {
+                        markOpSuccess("avplay", avplayStartedAt, cameraName);
+                    }, function (error) {
+                        markOpFailure("avplay", avplayStartedAt, error, cameraName);
+                        throw error;
+                    });
                 });
             })
             .then(function () {
@@ -365,6 +621,20 @@
                 PlayerUI.setStatus("LIVE");
                 playerHasActiveStream = true;
                 playbackRetryAttempt = 0;
+
+                clearTimeout(firstFrameWatchTimer);
+                firstFrameWatchTimer = setTimeout(function () {
+                    if (TVAppState.getMode() !== "PLAYER") {
+                        return;
+                    }
+
+                    if (lastPlayTimeTick > 0) {
+                        return;
+                    }
+
+                    playerHasActiveStream = false;
+                    schedulePlaybackRetry(cameraName, new Error("No video frames received"));
+                }, 9000);
             })
             .catch(function (error) {
                 if (error && error.cancelled) {
@@ -379,6 +649,9 @@
                 PlayerUI.showLoading(false);
                 PlayerUI.showBuffering(false);
                 playerHasActiveStream = false;
+                clearTimeout(firstFrameWatchTimer);
+                firstFrameWatchTimer = null;
+                TVAppState.setCameraDebugInfo(cameraName, "play err: " + shortError(error));
                 schedulePlaybackRetry(cameraName, error);
             });
     }
@@ -424,6 +697,12 @@
     function handleGridKey(keyCode) {
         if (keyCode === KEY.YELLOW) {
             setDebugVisible(!debugVisible);
+            return;
+        }
+
+        if (keyCode === KEY.GREEN && debugVisible) {
+            showToast("Running deep diagnostics...");
+            refreshDebugPanel({ deepProbe: true });
             return;
         }
 
@@ -555,6 +834,7 @@
 
         pollInFlight = true;
         var triggeredResync = false;
+        var pollStartedAt = opStart();
 
         TVApi.poll(TVAppState.getStateVersion(), TVAppState.getPollUrl())
             .then(function (response) {
@@ -565,17 +845,26 @@
                 }
 
                 pollBackoffStep = 0;
+                markOpSuccess("poll", pollStartedAt, "changed=" + (!!response.changed));
             }, function (error) {
                 if (error && error.status === 422) {
                     console.warn("Poll state out of sync, re-running bootstrap");
                     triggeredResync = true;
                     bootstrapBackoffStep = 0;
+                    markOpFailure("poll", pollStartedAt, error, "resync");
+                    TVAppState.setAllCameraDebugInfo("poll resync: " + shortError(error));
                     bootstrap();
                     return;
                 }
 
                 pollBackoffStep = Math.min(pollBackoffStep + 1, 5);
+                markOpFailure("poll", pollStartedAt, error);
+                TVAppState.setAllCameraDebugInfo("poll err: " + shortError(error));
                 console.warn("Polling failed", error);
+
+                if (diagnostics.operations.poll.consecutiveFail >= BACKEND_UNREACHABLE_THRESHOLD) {
+                    TVAppState.setAllCameraStatus("SYNC_ERROR", false);
+                }
             })
             .then(function () {
                 pollInFlight = false;
@@ -593,7 +882,7 @@
             return;
         }
 
-        ["MediaPlayPause", "MediaPlay", "MediaPause", "Exit", "ColorF2Yellow"].forEach(function (keyName) {
+        ["MediaPlayPause", "MediaPlay", "MediaPause", "Exit", "ColorF2Yellow", "ColorF1Green"].forEach(function (keyName) {
             try {
                 tizen.tvinputdevice.registerKey(keyName);
             } catch (error) {
@@ -606,7 +895,9 @@
         clearTimeout(pollTimer);
         clearTimeout(bootstrapRetryTimer);
         clearTimeout(playbackRetryTimer);
+        clearTimeout(firstFrameWatchTimer);
         clearTimeout(resizeRectTimer);
+        clearInterval(diagnosticsTimer);
         clearInterval(debugRefreshTimer);
         TVPlayer.destroy();
 
@@ -624,11 +915,13 @@
 
     function bootstrap() {
         clearTimeout(bootstrapRetryTimer);
+        var bootstrapStartedAt = opStart();
 
         TVApi.getBootstrapLite()
             .then(function (bootstrapData) {
                 TVAppState.applyBackendState(bootstrapData);
                 bootstrapBackoffStep = 0;
+                markOpSuccess("bootstrap", bootstrapStartedAt, "sv=" + TVAppState.getStateVersion());
                 updateBackendInfo();
                 renderGrid();
                 showToast("Connected");
@@ -636,9 +929,15 @@
             }, function (error) {
                 console.error("Bootstrap failed", error);
                 bootstrapBackoffStep = Math.min(bootstrapBackoffStep + 1, 5);
-                TVAppState.setAllCameraStatus("BACKEND_UNREACHABLE", false);
+                markOpFailure("bootstrap", bootstrapStartedAt, error);
+                TVAppState.setAllCameraDebugInfo("bootstrap err: " + shortError(error));
+
+                if (diagnostics.operations.bootstrap.consecutiveFail >= BACKEND_UNREACHABLE_THRESHOLD) {
+                    TVAppState.setAllCameraStatus("BACKEND_UNREACHABLE", false);
+                }
+
                 renderGrid();
-                showToast("Bridge unavailable. Retrying bootstrap...");
+                showToast("Bridge unavailable: " + shortError(error));
                 scheduleBootstrapRetry();
             });
     }
@@ -700,7 +999,9 @@
         playerScreen = byId("player-screen");
         backendInfo = byId("backend-info");
         toast = byId("toast");
+        telemetryStrip = byId("telemetry-strip");
         debugPanel = byId("debug-panel");
+        debugTitle = byId("debug-title");
         debugContent = byId("debug-content");
 
         GridUI.init(byId("camera-grid"), TVAppState.getCameraOrder());
@@ -730,9 +1031,17 @@
                 PlayerUI.setStatus("LIVE");
                 playerHasActiveStream = true;
             },
+            onCurrentPlayTime: function () {
+                lastPlayTimeTick = Date.now();
+                clearTimeout(firstFrameWatchTimer);
+                firstFrameWatchTimer = null;
+                playerHasActiveStream = true;
+            },
             onError: function (error) {
                 var camera = TVAppState.getCurrentCamera();
                 playerHasActiveStream = false;
+                clearTimeout(firstFrameWatchTimer);
+                firstFrameWatchTimer = null;
                 if (camera) {
                     schedulePlaybackRetry(camera, error || new Error("AVPlay error"));
                 }
@@ -753,6 +1062,12 @@
         updateBackendInfo();
         switchToGrid();
         setDebugVisible(false);
+        updateTelemetryStrip();
+        diagnosticsTimer = setInterval(function () {
+            fetchViewStatus().catch(function () {
+                return null;
+            });
+        }, 12000);
         bootstrap();
     }
 

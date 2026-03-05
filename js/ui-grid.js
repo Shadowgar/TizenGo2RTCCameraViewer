@@ -36,6 +36,7 @@
             '<span class="tile-live">LIVE</span>',
             "</div>",
             '<div class="tile-status"></div>',
+            '<div class="tile-debug"></div>',
             '<div class="tile-updated"></div>'
         ].join("");
 
@@ -87,6 +88,7 @@
 
                 tile.querySelector(".tile-name").textContent = camera.label || global.TVAppState.getCameraLabel(cameraName);
                 tile.querySelector(".tile-status").textContent = status;
+                tile.querySelector(".tile-debug").textContent = camera.debugInfo || "";
                 tile.querySelector(".tile-updated").textContent = formatTime(camera.updatedAt || global.TVAppState.getStateUpdatedAt());
 
                 if (thumb) {

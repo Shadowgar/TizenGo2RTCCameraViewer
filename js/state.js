@@ -88,6 +88,7 @@
                 running: false,
                 updatedAt: null,
                 thumbnailUrl: null,
+                debugInfo: "",
                 playback: {
                     main: null,
                     live: null
@@ -120,6 +121,7 @@
                 running: false,
                 updatedAt: null,
                 thumbnailUrl: null,
+                debugInfo: "",
                 playback: {
                     main: null,
                     live: null
@@ -148,6 +150,7 @@
 
         target.updatedAt = entry.updated_at || entry.updatedAt || target.updatedAt || nowIso();
         target.thumbnailUrl = entry.thumbnail_url || entry.thumbnailUrl || target.thumbnailUrl;
+        target.debugInfo = entry.debug_info || entry.debugInfo || target.debugInfo || "";
 
         if (entry.playback && typeof entry.playback === "object") {
             var mainPlayback = entry.playback.main || entry.playback;
@@ -333,6 +336,29 @@
             }
             state.cameras[key].playback.main = hlsUrl || state.cameras[key].playback.main;
             emit("camera", state.cameras[key]);
+        },
+
+        setCameraDebugInfo: function (name, text) {
+            var key = normalizeCameraName(name);
+            if (!state.cameras[key]) {
+                mergeCameraEntry({ name: key });
+            }
+            state.cameras[key].debugInfo = String(text || "");
+            state.cameras[key].updatedAt = nowIso();
+            emit("camera", state.cameras[key]);
+        },
+
+        setAllCameraDebugInfo: function (text) {
+            var value = String(text || "");
+            Object.keys(state.cameras).forEach(function (name) {
+                state.cameras[name].debugInfo = value;
+                state.cameras[name].updatedAt = nowIso();
+            });
+
+            emit("state", {
+                cameras: state.cameras,
+                state_updated_at: state.stateUpdatedAt
+            });
         },
 
         setAllCameraStatus: function (status, isRunning) {

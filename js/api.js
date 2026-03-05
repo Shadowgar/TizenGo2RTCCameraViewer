@@ -269,6 +269,15 @@
             });
         },
 
+        getViewStatus: function () {
+            var url = buildUrl(global.TVAppState.getBridgeBaseUrl(), "/view/status");
+            return requestJson({
+                url: url,
+                retries: 1,
+                timeoutMs: 8000
+            });
+        },
+
         getDiagStreams: function (options) {
             options = options || {};
             var params = [];
@@ -291,7 +300,7 @@
             return requestJson({
                 url: url,
                 retries: 1,
-                timeoutMs: 12000
+                timeoutMs: options.timeoutMs || 12000
             });
         }
     };

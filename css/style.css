@@ -5,7 +5,7 @@ body {
     margin: 0;
     padding: 0;
     overflow: hidden;
-    background: #080a10;
+    background: transparent;
     color: #eef4ff;
     font-family: Arial, sans-serif;
 }
@@ -22,6 +22,14 @@ body {
 
 .screen {
     position: relative;
+}
+
+#grid-screen {
+    background: #080a10;
+}
+
+#player-screen {
+    background: transparent;
 }
 
 .hidden {
@@ -129,9 +137,21 @@ body {
 .tile-status {
     position: relative;
     z-index: 1;
-    margin-top: 30px;
-    font-size: 28px;
+    margin-top: 26px;
+    font-size: 24px;
     color: #c5d3ea;
+}
+
+.tile-debug {
+    position: relative;
+    z-index: 1;
+    margin-top: 10px;
+    color: #9bb1d4;
+    font-size: 16px;
+    line-height: 1.2;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .tile-updated {
@@ -300,4 +320,21 @@ body {
     color: #dde8ff;
     font-size: 20px;
     z-index: 40;
+}
+
+.telemetry-strip {
+    position: absolute;
+    left: 24px;
+    right: 24px;
+    bottom: 6px;
+    padding: 8px 12px;
+    border-radius: 8px;
+    background: rgba(0, 0, 0, 0.55);
+    color: #bdd5ff;
+    font-size: 15px;
+    line-height: 1.2;
+    z-index: 45;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
