@@ -463,14 +463,42 @@
                     }
 
                     var lines = text.split(/\r?\n/);
+                    var bestUri = "";
+                    var bestBandwidth = -1;
                     var i;
+
                     for (i = 0; i < lines.length; i += 1) {
                         var line = String(lines[i] || "").trim();
-                        if (!line || line.charAt(0) === "#") {
+                        if (line.indexOf("#EXT-X-STREAM-INF:") !== 0) {
                             continue;
                         }
 
-                        resolve(resolveRelativeUrl(url, line));
+                        var bandwidth = -1;
+                        var bandwidthMatch = line.match(/(?:^|,)BANDWIDTH=(\d+)/i);
+                        if (bandwidthMatch && bandwidthMatch[1]) {
+                            bandwidth = parseInt(bandwidthMatch[1], 10);
+                        }
+
+                        var j;
+                        for (j = i + 1; j < lines.length; j += 1) {
+                            var candidate = String(lines[j] || "").trim();
+                            if (!candidate) {
+                                continue;
+                            }
+                            if (candidate.charAt(0) === "#") {
+                                continue;
+                            }
+
+                            if (bandwidth > bestBandwidth) {
+                                bestBandwidth = bandwidth;
+                                bestUri = candidate;
+                            }
+                            break;
+                        }
+                    }
+
+                    if (bestUri) {
+                        resolve(resolveRelativeUrl(url, bestUri));
                         return;
                     }
 

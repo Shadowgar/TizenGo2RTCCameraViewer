@@ -162,7 +162,7 @@
                     }
 
                     try {
-                        player.setStreamingProperty("ADAPTIVE_INFO", "STARTBITRATE=LOWEST");
+                        player.setStreamingProperty("ADAPTIVE_INFO", "STARTBITRATE=HIGHEST");
                     } catch (streamingPropertyError) {
                         console.warn("Unable to set ADAPTIVE_INFO", streamingPropertyError);
                     }
