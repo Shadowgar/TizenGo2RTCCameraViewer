@@ -30,12 +30,13 @@
             <div id="player-hud" class="player-hud">
                 <div class="hud-title-row">
                     <span id="hud-camera-name" class="hud-camera-name">Camera</span>
-                    <div class="hud-meta">
-                        <span id="hud-weather" class="hud-weather">Weather --</span>
-                        <span id="hud-clock" class="hud-clock">--:--:--</span>
-                    </div>
                 </div>
                 <div id="hud-status" class="hud-status">Idle</div>
+            </div>
+
+            <div id="player-mini-meta" class="player-mini-meta">
+                <span id="hud-weather" class="hud-weather">Oil City, PA 16301 | --</span>
+                <span id="hud-clock" class="hud-clock">--:--:--</span>
             </div>
 
             <aside id="player-settings" class="player-settings hidden" aria-label="Player settings">
@@ -58,7 +59,7 @@
                 </div>
                 <div id="setting-row-weather-location" class="setting-row" data-setting-row="weather_location">
                     <span class="setting-label">Weather Location</span>
-                    <span id="setting-weather-location-value" class="setting-value">Auto</span>
+                    <span id="setting-weather-location-value" class="setting-value">Oil City, PA 16301</span>
                 </div>
                 <div id="setting-row-hud-autohide" class="setting-row" data-setting-row="hud_autohide">
                     <span class="setting-label">HUD Auto-Hide</span>
@@ -86,7 +87,7 @@
         </section>
 
         <div id="toast" class="toast hidden"></div>
-        <div id="telemetry-strip" class="telemetry-strip">Diag: initializing...</div>
+        <div id="telemetry-strip" class="telemetry-strip hidden">Diag: initializing...</div>
     </div>
 
     <script src="$WEBAPIS/webapis/webapis.js"></script>

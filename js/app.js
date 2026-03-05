@@ -73,8 +73,8 @@
     var pendingDwellCameraIndex = 0;
     var pictureMode = "NORMAL";
     var pendingPictureMode = "NORMAL";
-    var weatherLocationId = "auto";
-    var pendingWeatherLocationId = "auto";
+    var weatherLocationId = "oil_city_pa";
+    var pendingWeatherLocationId = "oil_city_pa";
     var hudAutoHideSeconds = 0;
     var pendingHudAutoHideSeconds = 0;
     var settingsFocusIndex = 0;
@@ -97,11 +97,8 @@
     var WEATHER_LOCATION_STORAGE_KEY = "TVAPP_PLAYER_WEATHER_LOCATION";
     var HUD_AUTO_HIDE_STORAGE_KEY = "TVAPP_PLAYER_HUD_AUTO_HIDE";
     var WEATHER_LOCATIONS = [
-        { id: "auto", label: "Auto" },
-        { id: "henderson_nv", label: "Henderson, NV", latitude: 36.0395, longitude: -114.9817 },
-        { id: "las_vegas_nv", label: "Las Vegas, NV", latitude: 36.1699, longitude: -115.1398 },
-        { id: "phoenix_az", label: "Phoenix, AZ", latitude: 33.4484, longitude: -112.0740 },
-        { id: "salt_lake_city_ut", label: "Salt Lake City, UT", latitude: 40.7608, longitude: -111.8910 }
+        { id: "oil_city_pa", label: "Oil City, PA 16301", latitude: 41.4334, longitude: -79.7064 },
+        { id: "auto", label: "Auto (Device)" }
     ];
 
     var diagnostics = {
@@ -912,7 +909,7 @@
             return Promise.resolve(selected);
         }
 
-        var fallback = findWeatherLocationById("henderson_nv");
+        var fallback = findWeatherLocationById("oil_city_pa");
         return new Promise(function (resolve) {
             if (!global.navigator || !global.navigator.geolocation || typeof global.navigator.geolocation.getCurrentPosition !== "function") {
                 resolve(fallback);

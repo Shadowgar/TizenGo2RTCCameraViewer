@@ -302,10 +302,18 @@ body {
     align-items: center;
 }
 
-.hud-meta {
+.player-mini-meta {
+    position: absolute;
+    top: 30px;
+    right: 34px;
+    z-index: 11;
     display: flex;
     align-items: center;
     gap: 16px;
+    padding: 8px 12px;
+    border-radius: 999px;
+    border: 1px solid var(--gh-border-default);
+    background: rgba(13, 17, 23, 0.7);
 }
 
 .hud-camera-name {
@@ -314,14 +322,14 @@ body {
 }
 
 .hud-clock {
-    font-size: 30px;
+    font-size: 23px;
     color: var(--gh-text-secondary);
 }
 
 .hud-weather {
-    font-size: 22px;
+    font-size: 18px;
     color: #79c0ff;
-    max-width: 560px;
+    max-width: 500px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -537,4 +545,8 @@ body {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+}
+
+#telemetry-strip {
+    display: none !important;
 }
