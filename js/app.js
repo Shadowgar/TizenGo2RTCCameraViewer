@@ -28,6 +28,9 @@
     var debugPanel;
     var debugTitle;
     var debugContent;
+    var playerSettingsPanel;
+    var settingRowCycle;
+    var settingCycleValue;
 
     var pollTimer = null;
     var bootstrapRetryTimer = null;
@@ -44,14 +47,20 @@
     var diagnosticsTimer = null;
     var viewStatusTimer = null;
     var debugRefreshTimer = null;
+    var autoCycleTimer = null;
     var debugVisible = false;
+    var playerSettingsVisible = false;
     var playerHasActiveStream = false;
     var pollPlaybackRecoverInFlight = false;
     var lastGridWarmupAt = 0;
+    var autoCycleSeconds = 10;
+    var pendingCycleSeconds = 10;
 
     var MAX_AUTO_PLAYBACK_RETRIES = 4;
     var BACKEND_UNREACHABLE_THRESHOLD = 3;
     var GRID_WARMUP_COOLDOWN_MS = 3000;
+    var AUTO_CYCLE_OPTIONS = [5, 10, 15];
+    var CYCLE_SETTINGS_STORAGE_KEY = "TVAPP_PLAYER_CYCLE_SECONDS";
 
     var diagnostics = {
         operations: {
@@ -102,6 +111,44 @@
         }
 
         return String(error);
+    }
+
+    function safeGetLocalStorage(key) {
+        try {
+            return global.localStorage ? global.localStorage.getItem(key) : null;
+        } catch (error) {
+            return null;
+        }
+    }
+
+    function safeSetLocalStorage(key, value) {
+        try {
+            if (global.localStorage) {
+                global.localStorage.setItem(key, value);
+            }
+        } catch (error) {
+            return;
+        }
+    }
+
+    function normalizeCycleSeconds(value) {
+        var numeric = Number(value) || 0;
+        if (AUTO_CYCLE_OPTIONS.indexOf(numeric) >= 0) {
+            return numeric;
+        }
+        return 10;
+    }
+
+    function cycleLabel(seconds) {
+        return String(seconds) + " sec";
+    }
+
+    function loadCyclePreferences() {
+        autoCycleSeconds = normalizeCycleSeconds(safeGetLocalStorage(CYCLE_SETTINGS_STORAGE_KEY));
+    }
+
+    function saveCyclePreferences() {
+        safeSetLocalStorage(CYCLE_SETTINGS_STORAGE_KEY, String(autoCycleSeconds));
     }
 
     function opStart() {
@@ -264,6 +311,137 @@
 
     function renderGrid() {
         GridUI.render(TVAppState.getCameras());
+    }
+
+    function renderPlayerSettingsUi() {
+        if (!playerSettingsPanel || !settingCycleValue || !settingRowCycle) {
+            return;
+        }
+
+        settingCycleValue.textContent = cycleLabel(pendingCycleSeconds);
+        settingRowCycle.classList.toggle("focused", true);
+    }
+
+    function stopAutoCycle() {
+        clearTimeout(autoCycleTimer);
+        autoCycleTimer = null;
+    }
+
+    function restartAutoCycle() {
+        stopAutoCycle();
+
+        if (TVAppState.getMode() !== "PLAYER" || playerSettingsVisible) {
+            return;
+        }
+
+        autoCycleTimer = setTimeout(function () {
+            autoCycleTimer = null;
+            if (TVAppState.getMode() !== "PLAYER" || playerSettingsVisible) {
+                return;
+            }
+
+            cyclePlayerCamera("RIGHT", { fromAutoCycle: true });
+        }, autoCycleSeconds * 1000);
+    }
+
+    function openPlayerSettings() {
+        if (!playerSettingsPanel) {
+            return;
+        }
+
+        pendingCycleSeconds = autoCycleSeconds;
+        playerSettingsVisible = true;
+        playerSettingsPanel.classList.remove("hidden");
+        renderPlayerSettingsUi();
+        stopAutoCycle();
+    }
+
+    function closePlayerSettings(applyChanges) {
+        if (!playerSettingsPanel) {
+            return;
+        }
+
+        if (applyChanges) {
+            autoCycleSeconds = normalizeCycleSeconds(pendingCycleSeconds);
+            saveCyclePreferences();
+            showToast("Cycle set: " + cycleLabel(autoCycleSeconds), 1200);
+        }
+
+        playerSettingsVisible = false;
+        playerSettingsPanel.classList.add("hidden");
+        restartAutoCycle();
+    }
+
+    function handlePlayerSettingsKey(keyCode) {
+        var selectedIndex;
+
+        if (keyCode === KEY.RETURN) {
+            closePlayerSettings(false);
+            return true;
+        }
+
+        if (keyCode === KEY.LEFT || keyCode === KEY.RIGHT) {
+            selectedIndex = AUTO_CYCLE_OPTIONS.indexOf(pendingCycleSeconds);
+            if (selectedIndex < 0) {
+                selectedIndex = 0;
+            }
+
+            if (keyCode === KEY.LEFT) {
+                selectedIndex = (selectedIndex - 1 + AUTO_CYCLE_OPTIONS.length) % AUTO_CYCLE_OPTIONS.length;
+            } else {
+                selectedIndex = (selectedIndex + 1) % AUTO_CYCLE_OPTIONS.length;
+            }
+
+            pendingCycleSeconds = AUTO_CYCLE_OPTIONS[selectedIndex];
+            renderPlayerSettingsUi();
+            return true;
+        }
+
+        if (keyCode === KEY.ENTER) {
+            closePlayerSettings(true);
+            return true;
+        }
+
+        return false;
+    }
+
+    function cyclePlayerCamera(direction, options) {
+        options = options || {};
+
+        var cameraOrder = TVAppState.getCameraOrder();
+        if (!cameraOrder || cameraOrder.length === 0) {
+            return;
+        }
+
+        var currentCamera = TVAppState.getCurrentCamera();
+        var currentIndex = cameraOrder.indexOf(currentCamera);
+        if (currentIndex < 0) {
+            currentIndex = TVAppState.getFocusIndex();
+        }
+        if (currentIndex < 0) {
+            currentIndex = 0;
+        }
+
+        var delta = direction === "LEFT" ? -1 : 1;
+        var nextIndex = (currentIndex + delta + cameraOrder.length) % cameraOrder.length;
+        var nextCamera = cameraOrder[nextIndex];
+
+        if (!nextCamera || nextCamera === currentCamera) {
+            restartAutoCycle();
+            return;
+        }
+
+        TVAppState.setFocusIndex(nextIndex);
+        GridUI.setFocusIndex(nextIndex);
+        TVAppState.setCurrentCamera(nextCamera);
+        PlayerUI.enter(TVAppState.getCameraLabel(nextCamera));
+        PlayerUI.setStatus(options.fromAutoCycle ? "Auto cycling..." : "Switching...");
+
+        if (!options.fromAutoCycle) {
+            showToast("Camera: " + TVAppState.getCameraLabel(nextCamera), 1000);
+        }
+
+        openAndPlayCamera(nextCamera, { reopen: true });
     }
 
     function setDebugVisible(visible) {
@@ -453,15 +631,22 @@
         TVAppState.setMode("GRID");
         playerScreen.classList.add("hidden");
         gridScreen.classList.remove("hidden");
+        playerSettingsVisible = false;
         playerHasActiveStream = false;
         clearTimeout(firstFrameWatchTimer);
         firstFrameWatchTimer = null;
         lastPlayTimeTick = 0;
 
+        stopAutoCycle();
+
         PlayerUI.exit();
         TVPlayer.stopAndClose();
         clearTimeout(playbackRetryTimer);
         playbackRetryTimer = null;
+
+        if (playerSettingsPanel) {
+            playerSettingsPanel.classList.add("hidden");
+        }
 
         warmupGridFeeds("return-to-grid");
     }
@@ -472,6 +657,7 @@
         gridScreen.classList.add("hidden");
         playerScreen.classList.remove("hidden");
         PlayerUI.enter(TVAppState.getCameraLabel(cameraName));
+        stopAutoCycle();
     }
 
     function extractHlsUrl(openResponse, cameraName) {
@@ -594,6 +780,8 @@
         var token = ++openRequestToken;
         var shouldReopen = options.reopen !== false;
         var startupRetries = typeof options.startupRetries === "number" ? options.startupRetries : 1;
+
+        stopAutoCycle();
 
         function cancelledError() {
             var error = new Error("Superseded open request");
@@ -741,6 +929,8 @@
                     playerHasActiveStream = false;
                     schedulePlaybackRetry(cameraName, new Error("No video frames received"));
                 }, 9000);
+
+                restartAutoCycle();
             })
             .catch(function (error) {
                 if (error && error.cancelled) {
@@ -763,6 +953,8 @@
     }
 
     function schedulePlaybackRetry(cameraName, error) {
+        stopAutoCycle();
+
         if (playbackRetryAttempt >= MAX_AUTO_PLAYBACK_RETRIES) {
             clearTimeout(playbackRetryTimer);
             playbackRetryTimer = null;
@@ -844,6 +1036,13 @@
     }
 
     function handlePlayerKey(keyCode) {
+        if (playerSettingsVisible) {
+            if (handlePlayerSettingsKey(keyCode)) {
+                return;
+            }
+            return;
+        }
+
         if (PlayerUI.isErrorVisible()) {
             if (keyCode === KEY.LEFT) {
                 PlayerUI.moveErrorActionFocus("LEFT");
@@ -857,6 +1056,21 @@
                 handlePlayerErrorAction();
                 return;
             }
+        }
+
+        if (keyCode === KEY.ENTER) {
+            openPlayerSettings();
+            return;
+        }
+
+        if (keyCode === KEY.LEFT) {
+            cyclePlayerCamera("LEFT");
+            return;
+        }
+
+        if (keyCode === KEY.RIGHT) {
+            cyclePlayerCamera("RIGHT");
+            return;
         }
 
         if (keyCode === KEY.RETURN) {
@@ -1114,6 +1328,9 @@
         debugPanel = byId("debug-panel");
         debugTitle = byId("debug-title");
         debugContent = byId("debug-content");
+        playerSettingsPanel = byId("player-settings");
+        settingRowCycle = byId("setting-row-cycle");
+        settingCycleValue = byId("setting-cycle-value");
 
         GridUI.init(byId("camera-grid"), TVAppState.getCameraOrder());
         PlayerUI.init({
@@ -1165,6 +1382,9 @@
 
     function initialize() {
         initDom();
+        loadCyclePreferences();
+        pendingCycleSeconds = autoCycleSeconds;
+        renderPlayerSettingsUi();
         bindStateListeners();
         bindLifecycle();
         registerRemoteKeys();

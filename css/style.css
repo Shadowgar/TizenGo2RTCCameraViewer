@@ -278,6 +278,56 @@ body {
     color: #c6d7f6;
 }
 
+.player-settings {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: 760px;
+    max-width: calc(100% - 80px);
+    border-radius: 14px;
+    border: 1px solid #4a5f85;
+    background: rgba(7, 10, 17, 0.96);
+    z-index: 25;
+    padding: 18px;
+}
+
+.player-settings-title {
+    font-size: 30px;
+    font-weight: 700;
+}
+
+.setting-row {
+    margin-top: 14px;
+    border-radius: 10px;
+    border: 1px solid #4a5f85;
+    padding: 10px 12px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.setting-row.focused {
+    border-color: #5db3ff;
+    background: rgba(93, 179, 255, 0.16);
+}
+
+.setting-label {
+    font-size: 22px;
+    color: #d7e7ff;
+}
+
+.setting-value {
+    font-size: 26px;
+    font-weight: 700;
+}
+
+.settings-hint {
+    margin-top: 12px;
+    font-size: 18px;
+    color: #9bb1d4;
+}
+
 .center-badge {
     position: absolute;
     left: 50%;

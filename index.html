@@ -34,6 +34,15 @@
                 <div id="hud-status" class="hud-status">Idle</div>
             </div>
 
+            <aside id="player-settings" class="player-settings hidden" aria-label="Player settings">
+                <div class="player-settings-title">Player Cycle Settings</div>
+                <div id="setting-row-cycle" class="setting-row focused" data-setting-row="cycle">
+                    <span class="setting-label">Single View Cycle</span>
+                    <span id="setting-cycle-value" class="setting-value">10 sec</span>
+                </div>
+                <div class="settings-hint">Left/Right: 5/10/15 sec. Enter: Save. Back: Cancel.</div>
+            </aside>
+
             <div id="player-loading" class="center-badge hidden">Starting stream…</div>
             <div id="player-buffering" class="center-badge hidden">Buffering…</div>
 
