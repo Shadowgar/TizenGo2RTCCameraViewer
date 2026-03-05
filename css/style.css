@@ -137,6 +137,40 @@ body {
     font-size: 20px;
 }
 
+.debug-panel {
+    position: absolute;
+    left: 40px;
+    right: 40px;
+    top: 120px;
+    bottom: 52px;
+    border-radius: 14px;
+    border: 1px solid #4a5f85;
+    background: rgba(7, 10, 17, 0.95);
+    z-index: 30;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.debug-title {
+    font-size: 24px;
+    font-weight: 700;
+    padding: 16px 18px;
+    border-bottom: 1px solid #2f3f5f;
+}
+
+.debug-content {
+    margin: 0;
+    padding: 16px 18px 20px;
+    color: #bdd5ff;
+    white-space: pre-wrap;
+    word-break: break-word;
+    overflow: auto;
+    font-size: 18px;
+    line-height: 1.35;
+    flex: 1;
+}
+
 .avplay-surface {
     position: absolute;
     top: 0;

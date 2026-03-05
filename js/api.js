@@ -38,6 +38,10 @@
         if (payload.poll_interval_ms !== undefined && typeof payload.poll_interval_ms !== "number") {
             throw new Error("Invalid /tizen/bootstrap-lite payload: poll_interval_ms must be a number");
         }
+
+        if (!Array.isArray(payload.cameras)) {
+            throw new Error("Invalid /tizen/bootstrap-lite payload: cameras[] is required");
+        }
     }
 
     function validatePoll(payload) {
@@ -79,12 +83,44 @@
             return new Promise(function (resolve, reject) {
                 var timeoutHandle = null;
                 var controller = global.AbortController ? new global.AbortController() : null;
+                var settled = false;
 
-                if (controller) {
-                    timeoutHandle = global.setTimeout(function () {
-                        controller.abort();
-                    }, timeoutMs);
+                function clearTimer() {
+                    if (timeoutHandle) {
+                        global.clearTimeout(timeoutHandle);
+                        timeoutHandle = null;
+                    }
                 }
+
+                function resolveOnce(value) {
+                    if (settled) {
+                        return;
+                    }
+                    settled = true;
+                    clearTimer();
+                    resolve(value);
+                }
+
+                function rejectOnce(error) {
+                    if (settled) {
+                        return;
+                    }
+                    settled = true;
+                    clearTimer();
+                    reject(error);
+                }
+
+                timeoutHandle = global.setTimeout(function () {
+                    if (controller) {
+                        controller.abort();
+                        return;
+                    }
+
+                    rejectOnce({
+                        retriable: true,
+                        message: "Request timeout after " + timeoutMs + "ms"
+                    });
+                }, timeoutMs);
 
                 var fetchOptions = {
                     method: method,
@@ -102,8 +138,8 @@
 
                 global.fetch(options.url, fetchOptions)
                     .then(function (response) {
-                        if (timeoutHandle) {
-                            global.clearTimeout(timeoutHandle);
+                        if (settled) {
+                            return null;
                         }
 
                         if (!response.ok) {
@@ -115,10 +151,15 @@
                         }
                         return response.json();
                     })
-                    .then(resolve)
+                    .then(function (payload) {
+                        if (payload === null && settled) {
+                            return;
+                        }
+                        resolveOnce(payload);
+                    })
                     .catch(function (error) {
-                        if (timeoutHandle) {
-                            global.clearTimeout(timeoutHandle);
+                        if (settled) {
+                            return;
                         }
 
                         var retriable = !!(error && error.retriable) ||
@@ -133,7 +174,7 @@
                             return;
                         }
 
-                        reject(error instanceof Error ? error : new Error(error.message || "Network request failed"));
+                        rejectOnce(error instanceof Error ? error : new Error(error.message || "Network request failed"));
                     });
             });
         }
@@ -209,7 +250,7 @@
             });
         },
 
-        openCamera: function (cameraName, mode) {
+        openCamera: function (cameraName) {
             var url = buildUrl(global.TVAppState.getBridgeBaseUrl(), "/tizen/open");
             return requestJson({
                 url: url,
@@ -218,13 +259,38 @@
                     "Content-Type": "application/json"
                 },
                 body: {
-                    camera: cameraName,
-                    mode: mode || "main"
+                    camera: cameraName
                 },
                 retries: MAX_RETRIES
             }).then(function (payload) {
                 validateOpen(payload);
                 return payload;
+            });
+        },
+
+        getDiagStreams: function (options) {
+            options = options || {};
+            var params = [];
+
+            if (options.startPublishers) {
+                params.push("start_publishers=true");
+            }
+
+            if (options.probe) {
+                params.push("probe=true");
+            }
+
+            if (typeof options.probeTimeoutSeconds === "number") {
+                params.push("probe_timeout_seconds=" + encodeURIComponent(String(options.probeTimeoutSeconds)));
+            }
+
+            var path = "/diag/streams" + (params.length ? "?" + params.join("&") : "");
+            var url = buildUrl(global.TVAppState.getBridgeBaseUrl(), path);
+
+            return requestJson({
+                url: url,
+                retries: 1,
+                timeoutMs: 12000
             });
         }
     };

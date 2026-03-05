@@ -11,6 +11,7 @@
         RIGHT: 39,
         DOWN: 40,
         ENTER: 13,
+        YELLOW: 405,
         RETURN: 10009,
         EXIT: 10182,
         PLAY: 415,
@@ -22,6 +23,8 @@
     var playerScreen;
     var backendInfo;
     var toast;
+    var debugPanel;
+    var debugContent;
 
     var pollTimer = null;
     var pollBackoffStep = 0;
@@ -31,6 +34,12 @@
     var playbackRetryTimer = null;
     var playbackRetryAttempt = 0;
     var resizeRectTimer = null;
+    var debugRefreshTimer = null;
+    var debugVisible = false;
+    var playerHasActiveStream = false;
+    var pollPlaybackRecoverInFlight = false;
+
+    var MAX_AUTO_PLAYBACK_RETRIES = 4;
 
     function byId(id) {
         return document.getElementById(id);
@@ -58,10 +67,70 @@
         GridUI.render(TVAppState.getCameras());
     }
 
+    function setDebugVisible(visible) {
+        debugVisible = !!visible;
+
+        if (!debugPanel) {
+            return;
+        }
+
+        debugPanel.classList.toggle("hidden", !debugVisible);
+
+        if (!debugVisible) {
+            clearInterval(debugRefreshTimer);
+            debugRefreshTimer = null;
+            return;
+        }
+
+        refreshDebugPanel();
+        clearInterval(debugRefreshTimer);
+        debugRefreshTimer = setInterval(refreshDebugPanel, 15000);
+    }
+
+    function refreshDebugPanel() {
+        if (!debugVisible || !debugContent) {
+            return;
+        }
+
+        debugContent.textContent = "Loading /diag/streams...";
+
+        TVApi.getDiagStreams({
+            startPublishers: true,
+            probe: true,
+            probeTimeoutSeconds: 25
+        }).then(function (payload) {
+            if (!debugVisible || !debugContent) {
+                return;
+            }
+
+            debugContent.textContent = JSON.stringify(payload, null, 2);
+        }, function (error) {
+            if (!debugVisible || !debugContent) {
+                return;
+            }
+
+            debugContent.textContent = "diag/streams failed: " + (error && error.message ? error.message : "unknown error");
+        });
+    }
+
+    function mergeOpenResponseIntoState(openResponse) {
+        if (!openResponse || !openResponse.camera) {
+            return;
+        }
+
+        TVAppState.applyBackendState({
+            state_version: openResponse.state_version,
+            state_updated_at: openResponse.state_updated_at,
+            startup_grace_ms: openResponse.startup_grace_ms,
+            cameras: [openResponse]
+        });
+    }
+
     function switchToGrid() {
         TVAppState.setMode("GRID");
         playerScreen.classList.add("hidden");
         gridScreen.classList.remove("hidden");
+        playerHasActiveStream = false;
 
         PlayerUI.exit();
         TVPlayer.stopAndClose();
@@ -82,6 +151,14 @@
             return openResponse.playback.hls_url;
         }
 
+        if (openResponse && openResponse.preferred_url) {
+            return openResponse.preferred_url;
+        }
+
+        if (openResponse && openResponse.hls_url) {
+            return openResponse.hls_url;
+        }
+
         var camera = TVAppState.getCamera(cameraName);
         if (camera && camera.playback && camera.playback.main) {
             return camera.playback.main;
@@ -94,7 +171,7 @@
         options = options || {};
         var token = ++openRequestToken;
         var shouldReopen = options.reopen !== false;
-        var hlsUrl = null;
+        var startupRetries = typeof options.startupRetries === "number" ? options.startupRetries : 1;
 
         function cancelledError() {
             var error = new Error("Superseded open request");
@@ -102,59 +179,119 @@
             return error;
         }
 
+        function ensureToken() {
+            if (token !== openRequestToken) {
+                throw cancelledError();
+            }
+        }
+
         clearTimeout(playbackRetryTimer);
         playbackRetryTimer = null;
+        playerHasActiveStream = false;
 
         PlayerUI.hideError();
         PlayerUI.showLoading(true);
         PlayerUI.setStatus("Requesting stream...");
 
-        var openPromise = shouldReopen ? TVApi.openCamera(cameraName, "main") : Promise.resolve(null);
+        var openPromise = shouldReopen ? TVApi.openCamera(cameraName) : Promise.resolve(null);
 
         return openPromise
             .then(function (openResponse) {
-                if (token !== openRequestToken) {
-                    throw cancelledError();
-                }
+                ensureToken();
 
                 if (openResponse) {
-                    TVAppState.applyBackendState(openResponse);
-
-                    if (openResponse.state_version !== undefined) {
-                        TVAppState.applyBackendState({ state_version: openResponse.state_version });
-                    }
-
-                    if (openResponse.camera) {
-                        TVAppState.setCameraRunning(openResponse.camera, false, "STARTING");
-                    }
+                    mergeOpenResponseIntoState(openResponse);
                 }
 
-                hlsUrl = extractHlsUrl(openResponse, cameraName);
-
-                if (!hlsUrl) {
-                    throw new Error("No HLS URL found in /tizen/open playback or bootstrap preferred_url");
+                var hlsUrl = extractHlsUrl(openResponse, cameraName);
+                if (hlsUrl) {
+                    TVAppState.setCameraPlaybackUrl(cameraName, hlsUrl);
                 }
 
-                TVAppState.setCameraPlaybackUrl(cameraName, hlsUrl);
-                PlayerUI.setStatus("Waiting for publisher...");
-                return TVAppState.waitForCameraRunning(cameraName, TVAppState.getStartupGraceMs());
+                return {
+                    openResponse: openResponse,
+                    hlsUrl: hlsUrl,
+                    startupGraceMs: (openResponse && typeof openResponse.startup_grace_ms === "number")
+                        ? openResponse.startup_grace_ms
+                        : TVAppState.getStartupGraceMs(),
+                    ready: !!(openResponse && openResponse.ready)
+                };
             })
-            .then(function () {
-                if (token !== openRequestToken) {
-                    throw cancelledError();
+            .then(function (context) {
+                ensureToken();
+
+                if (!context.ready) {
+                    context.ready = TVAppState.isCameraRunning(cameraName);
+                }
+
+                if (context.ready) {
+                    return context;
+                }
+
+                PlayerUI.setStatus("Starting stream...");
+                return TVAppState.waitForCameraRunning(cameraName, context.startupGraceMs).then(function (becameReady) {
+                    if (becameReady) {
+                        context.ready = true;
+                        return context;
+                    }
+
+                    if (!shouldReopen || startupRetries <= 0) {
+                        throw new Error("Stream unavailable after startup grace timeout");
+                    }
+
+                    PlayerUI.setStatus("Still starting... retrying open");
+                    return TVApi.openCamera(cameraName).then(function (retryResponse) {
+                        ensureToken();
+                        mergeOpenResponseIntoState(retryResponse);
+
+                        var retryUrl = extractHlsUrl(retryResponse, cameraName) || context.hlsUrl;
+                        if (retryUrl) {
+                            TVAppState.setCameraPlaybackUrl(cameraName, retryUrl);
+                        }
+
+                        var retryGraceMs = (retryResponse && typeof retryResponse.startup_grace_ms === "number")
+                            ? retryResponse.startup_grace_ms
+                            : context.startupGraceMs;
+                        var retryReady = !!(retryResponse && retryResponse.ready) || TVAppState.isCameraRunning(cameraName);
+
+                        if (retryReady) {
+                            return {
+                                hlsUrl: retryUrl,
+                                ready: true
+                            };
+                        }
+
+                        return TVAppState.waitForCameraRunning(cameraName, retryGraceMs).then(function (readyAfterRetry) {
+                            if (!readyAfterRetry) {
+                                throw new Error("Stream unavailable. Please retry.");
+                            }
+
+                            return {
+                                hlsUrl: retryUrl,
+                                ready: true
+                            };
+                        });
+                    });
+                });
+            })
+            .then(function (context) {
+                ensureToken();
+
+                var hlsUrl = context.hlsUrl || extractHlsUrl(null, cameraName);
+                if (!hlsUrl) {
+                    throw new Error("No preferred_url found for playback");
                 }
 
                 PlayerUI.setStatus("Starting AVPlay...");
                 return TVPlayer.play(hlsUrl);
             })
             .then(function () {
-                if (token !== openRequestToken) {
-                    return;
-                }
+                ensureToken();
 
                 PlayerUI.showLoading(false);
                 PlayerUI.showBuffering(false);
                 PlayerUI.setStatus("LIVE");
+                playerHasActiveStream = true;
                 playbackRetryAttempt = 0;
             })
             .catch(function (error) {
@@ -169,17 +306,26 @@
                 console.error("openAndPlayCamera failed", error);
                 PlayerUI.showLoading(false);
                 PlayerUI.showBuffering(false);
+                playerHasActiveStream = false;
                 schedulePlaybackRetry(cameraName, error);
             });
     }
 
     function schedulePlaybackRetry(cameraName, error) {
+        if (playbackRetryAttempt >= MAX_AUTO_PLAYBACK_RETRIES) {
+            clearTimeout(playbackRetryTimer);
+            playbackRetryTimer = null;
+            PlayerUI.setStatus("UNAVAILABLE");
+            PlayerUI.showError("Stream unavailable after retries. Press Retry or Back.");
+            return;
+        }
+
         playbackRetryAttempt += 1;
         var delayMs = Math.min(15000, 1000 * Math.pow(2, playbackRetryAttempt - 1));
         var seconds = Math.round(delayMs / 1000);
-        var message = "Playback failed: " + (error && error.message ? error.message : "unknown error") + ". Auto retry in " + seconds + "s.";
+        var message = "Starting stream: " + (error && error.message ? error.message : "unknown error") + ". Auto retry in " + seconds + "s.";
 
-        PlayerUI.setStatus("ERROR");
+        PlayerUI.setStatus("STARTING");
         PlayerUI.showError(message);
 
         clearTimeout(playbackRetryTimer);
@@ -204,6 +350,11 @@
     }
 
     function handleGridKey(keyCode) {
+        if (keyCode === KEY.YELLOW) {
+            setDebugVisible(!debugVisible);
+            return;
+        }
+
         if (keyCode === KEY.LEFT) {
             GridUI.moveFocus("LEFT");
         } else if (keyCode === KEY.RIGHT) {
@@ -220,6 +371,11 @@
             switchToPlayer(selected);
             openAndPlayCamera(selected, { reopen: true });
         } else if (keyCode === KEY.RETURN) {
+            if (debugVisible) {
+                setDebugVisible(false);
+                return;
+            }
+
             var now = Date.now();
             if (now - lastBackPressAt < 1200) {
                 exitApp();
@@ -262,6 +418,30 @@
         }
     }
 
+    function maybeRecoverPlaybackAfterPoll() {
+        if (TVAppState.getMode() !== "PLAYER" || playerHasActiveStream || pollPlaybackRecoverInFlight) {
+            return;
+        }
+
+        var currentCamera = TVAppState.getCurrentCamera();
+        if (!currentCamera) {
+            return;
+        }
+
+        var cameraState = TVAppState.getCamera(currentCamera);
+        if (!cameraState || !cameraState.running) {
+            return;
+        }
+
+        pollPlaybackRecoverInFlight = true;
+        PlayerUI.setStatus("Stream ready, starting...");
+        openAndPlayCamera(currentCamera, { reopen: false, startupRetries: 0 }).then(function () {
+            pollPlaybackRecoverInFlight = false;
+        }, function () {
+            pollPlaybackRecoverInFlight = false;
+        });
+    }
+
     function handleKeyDown(event) {
         var keyCode = event.keyCode;
 
@@ -296,8 +476,8 @@
 
         TVApi.poll(TVAppState.getStateVersion(), TVAppState.getPollUrl())
             .then(function (response) {
-                if (response.changed && response.payload) {
-                    TVAppState.applyBackendState(response.payload);
+                if (response.changed) {
+                    TVAppState.applyBackendState(response);
                 } else if (response.state_version !== undefined) {
                     TVAppState.applyBackendState({ state_version: response.state_version });
                 }
@@ -309,6 +489,7 @@
             })
             .then(function () {
                 pollInFlight = false;
+                maybeRecoverPlaybackAfterPoll();
                 renderGrid();
                 scheduleNextPoll();
             });
@@ -319,7 +500,7 @@
             return;
         }
 
-        ["MediaPlayPause", "MediaPlay", "MediaPause", "Exit"].forEach(function (keyName) {
+        ["MediaPlayPause", "MediaPlay", "MediaPause", "Exit", "ColorF2Yellow"].forEach(function (keyName) {
             try {
                 tizen.tvinputdevice.registerKey(keyName);
             } catch (error) {
@@ -332,6 +513,7 @@
         clearTimeout(pollTimer);
         clearTimeout(playbackRetryTimer);
         clearTimeout(resizeRectTimer);
+        clearInterval(debugRefreshTimer);
         TVPlayer.destroy();
 
         try {
@@ -376,6 +558,7 @@
 
         document.addEventListener("visibilitychange", function () {
             if (document.hidden) {
+                playerHasActiveStream = false;
                 TVPlayer.stopAndClose();
                 return;
             }
@@ -418,6 +601,8 @@
         playerScreen = byId("player-screen");
         backendInfo = byId("backend-info");
         toast = byId("toast");
+        debugPanel = byId("debug-panel");
+        debugContent = byId("debug-content");
 
         GridUI.init(byId("camera-grid"), TVAppState.getCameraOrder());
         PlayerUI.init({
@@ -444,9 +629,11 @@
                 PlayerUI.showBuffering(false);
                 PlayerUI.showLoading(false);
                 PlayerUI.setStatus("LIVE");
+                playerHasActiveStream = true;
             },
             onError: function (error) {
                 var camera = TVAppState.getCurrentCamera();
+                playerHasActiveStream = false;
                 if (camera) {
                     schedulePlaybackRetry(camera, error || new Error("AVPlay error"));
                 }
@@ -466,6 +653,7 @@
         renderGrid();
         updateBackendInfo();
         switchToGrid();
+        setDebugVisible(false);
         bootstrap();
     }
 

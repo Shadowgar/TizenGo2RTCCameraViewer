@@ -15,7 +15,12 @@
                 <div id="backend-info" class="backend-info"></div>
             </header>
             <div id="camera-grid" class="camera-grid" aria-label="Camera grid"></div>
-            <footer class="grid-help">Arrows: Move focus · Enter: Open · Back: Exit</footer>
+            <footer class="grid-help">Arrows: Move focus · Enter: Open · Yellow: Debug · Back: Exit</footer>
+
+            <aside id="debug-panel" class="debug-panel hidden" aria-label="Diagnostics panel">
+                <div class="debug-title">Bridge Diagnostics (/diag/streams)</div>
+                <pre id="debug-content" class="debug-content"></pre>
+            </aside>
         </section>
 
         <section id="player-screen" class="screen hidden" aria-label="Player screen">
