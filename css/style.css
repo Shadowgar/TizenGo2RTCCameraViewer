@@ -22,7 +22,7 @@ body {
     margin: 0;
     padding: 0;
     overflow: hidden;
-    background: var(--gh-bg-canvas);
+    background: transparent;
     color: var(--gh-text-primary);
     font-family: "Mona Sans", "Hubot Sans", "Segoe UI Variable", "Trebuchet MS", sans-serif;
 }
