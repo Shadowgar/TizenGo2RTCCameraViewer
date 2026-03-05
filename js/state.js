@@ -87,6 +87,7 @@
                 status: "UNKNOWN",
                 running: false,
                 updatedAt: null,
+                thumbnailUrl: null,
                 playback: {
                     main: null,
                     live: null
@@ -118,6 +119,7 @@
                 status: "UNKNOWN",
                 running: false,
                 updatedAt: null,
+                thumbnailUrl: null,
                 playback: {
                     main: null,
                     live: null
@@ -145,6 +147,7 @@
         }
 
         target.updatedAt = entry.updated_at || entry.updatedAt || target.updatedAt || nowIso();
+        target.thumbnailUrl = entry.thumbnail_url || entry.thumbnailUrl || target.thumbnailUrl;
 
         if (entry.playback && typeof entry.playback === "object") {
             var mainPlayback = entry.playback.main || entry.playback;

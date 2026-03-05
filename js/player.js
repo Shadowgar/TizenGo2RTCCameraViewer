@@ -136,6 +136,12 @@
                     applyDisplayRect();
 
                     try {
+                        player.setDisplayMethod("PLAYER_DISPLAY_MODE_AUTO_ASPECT_RATIO");
+                    } catch (displayMethodError) {
+                        console.warn("Unable to set display method", displayMethodError);
+                    }
+
+                    try {
                         player.setStreamingProperty("ADAPTIVE_INFO", "STARTBITRATE=LOWEST");
                     } catch (streamingPropertyError) {
                         console.warn("Unable to set ADAPTIVE_INFO", streamingPropertyError);

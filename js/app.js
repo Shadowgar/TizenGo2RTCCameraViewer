@@ -169,6 +169,72 @@
         return null;
     }
 
+    function isAbsoluteUrl(url) {
+        return /^https?:\/\//i.test(String(url || ""));
+    }
+
+    function resolveRelativeUrl(baseUrl, relative) {
+        if (isAbsoluteUrl(relative)) {
+            return relative;
+        }
+
+        var normalizedBase = String(baseUrl || "").split("?")[0];
+        var slashIndex = normalizedBase.lastIndexOf("/");
+        if (slashIndex === -1) {
+            return relative;
+        }
+
+        var basePrefix = normalizedBase.slice(0, slashIndex + 1);
+        return basePrefix + String(relative || "").replace(/^\.\//, "").replace(/^\//, "");
+    }
+
+    function resolvePlayableHlsUrl(preferredUrl) {
+        var url = String(preferredUrl || "").trim();
+        if (!url) {
+            return Promise.resolve(url);
+        }
+
+        return new Promise(function (resolve) {
+            var timeoutId = setTimeout(function () {
+                resolve(url);
+            }, 5000);
+
+            global.fetch(url, { cache: "no-store" })
+                .then(function (response) {
+                    if (!response || !response.ok) {
+                        return null;
+                    }
+                    return response.text();
+                })
+                .then(function (text) {
+                    clearTimeout(timeoutId);
+
+                    if (!text || text.indexOf("#EXT-X-STREAM-INF") === -1) {
+                        resolve(url);
+                        return;
+                    }
+
+                    var lines = text.split(/\r?\n/);
+                    var i;
+                    for (i = 0; i < lines.length; i += 1) {
+                        var line = String(lines[i] || "").trim();
+                        if (!line || line.charAt(0) === "#") {
+                            continue;
+                        }
+
+                        resolve(resolveRelativeUrl(url, line));
+                        return;
+                    }
+
+                    resolve(url);
+                })
+                .catch(function () {
+                    clearTimeout(timeoutId);
+                    resolve(url);
+                });
+        });
+    }
+
     function openAndPlayCamera(cameraName, options) {
         options = options || {};
         var token = ++openRequestToken;
@@ -284,8 +350,12 @@
                     throw new Error("No preferred_url found for playback");
                 }
 
-                PlayerUI.setStatus("Starting AVPlay...");
-                return TVPlayer.play(hlsUrl);
+                PlayerUI.setStatus("Resolving stream...");
+                return resolvePlayableHlsUrl(hlsUrl).then(function (resolvedHlsUrl) {
+                    ensureToken();
+                    PlayerUI.setStatus("Starting AVPlay...");
+                    return TVPlayer.play(resolvedHlsUrl || hlsUrl);
+                });
             })
             .then(function () {
                 ensureToken();

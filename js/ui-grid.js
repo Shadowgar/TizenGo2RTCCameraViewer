@@ -30,6 +30,7 @@
         tile.setAttribute("data-camera", cameraName);
 
         tile.innerHTML = [
+            '<div class="tile-thumb-wrap"><img class="tile-thumb" alt=""/></div>',
             '<div class="tile-head">',
             '<span class="tile-name"></span>',
             '<span class="tile-live">LIVE</span>',
@@ -82,10 +83,21 @@
 
                 var status = normalizeStatus(camera.status);
                 var running = !!camera.running;
+                var thumb = tile.querySelector(".tile-thumb");
 
                 tile.querySelector(".tile-name").textContent = camera.label || global.TVAppState.getCameraLabel(cameraName);
                 tile.querySelector(".tile-status").textContent = status;
                 tile.querySelector(".tile-updated").textContent = formatTime(camera.updatedAt || global.TVAppState.getStateUpdatedAt());
+
+                if (thumb) {
+                    if (camera.thumbnailUrl) {
+                        thumb.src = camera.thumbnailUrl;
+                        thumb.classList.remove("hidden");
+                    } else {
+                        thumb.removeAttribute("src");
+                        thumb.classList.add("hidden");
+                    }
+                }
 
                 var liveBadge = tile.querySelector(".tile-live");
                 liveBadge.classList.toggle("live", running);

@@ -68,6 +68,20 @@ body {
     background: linear-gradient(160deg, #0f1726 0%, #0c111a 100%);
     padding: 20px;
     transition: border-color 120ms linear;
+    overflow: hidden;
+}
+
+.tile-thumb-wrap {
+    position: absolute;
+    inset: 0;
+}
+
+.tile-thumb {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    opacity: 0.22;
+    filter: saturate(1.08) contrast(1.02);
 }
 
 .camera-tile.focused {
@@ -83,6 +97,8 @@ body {
 }
 
 .tile-head {
+    position: relative;
+    z-index: 1;
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -111,6 +127,8 @@ body {
 }
 
 .tile-status {
+    position: relative;
+    z-index: 1;
     margin-top: 30px;
     font-size: 28px;
     color: #c5d3ea;
@@ -118,6 +136,7 @@ body {
 
 .tile-updated {
     position: absolute;
+    z-index: 1;
     left: 22px;
     right: 22px;
     bottom: 18px;
@@ -177,7 +196,7 @@ body {
     right: 0;
     bottom: 0;
     left: 0;
-    background: #000;
+    background: transparent;
 }
 
 .player-hud {
