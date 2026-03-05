@@ -85,12 +85,18 @@ body {
 .tile-thumb-wrap {
     position: absolute;
     inset: 0;
+    overflow: hidden;
+    border-radius: 14px;
 }
 
 .tile-thumb {
+    position: absolute;
+    inset: 0;
+    display: block;
     width: 100%;
     height: 100%;
     object-fit: cover;
+    object-position: center center;
     opacity: 0.58;
     filter: saturate(1.08) contrast(1.02);
 }

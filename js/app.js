@@ -221,8 +221,16 @@
 
         Object.keys(payload.cameras).forEach(function (cameraName) {
             var item = payload.cameras[cameraName] || {};
+            var running = !!item.running;
+
+            TVAppState.setCameraRunning(
+                cameraName,
+                running,
+                running ? "READY" : "STOPPED"
+            );
+
             var debugText = [
-                "run=" + (item.running ? "1" : "0"),
+                "run=" + (running ? "1" : "0"),
                 "pid=" + (item.pid === undefined || item.pid === null ? "-" : item.pid),
                 "exit=" + (item.last_exit_code === undefined || item.last_exit_code === null ? "-" : item.last_exit_code),
                 "rst=" + (item.restart_count === undefined || item.restart_count === null ? "-" : item.restart_count)

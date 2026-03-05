@@ -26,6 +26,8 @@
     var thumbNonce = Date.now();
     var lastThumbNonceAt = 0;
     var THUMB_REFRESH_MS = 12000;
+    var THUMB_LOAD_TIMEOUT_MS = 9000;
+    var refreshCursor = 0;
 
     function withNonce(url, nonce) {
         var value = String(url || "").trim();
@@ -71,9 +73,11 @@
         if (thumb) {
             thumb.addEventListener("load", function () {
                 thumb.setAttribute("data-thumb-state", "ok");
+                thumb.removeAttribute("data-thumb-started-at");
             });
             thumb.addEventListener("error", function () {
                 thumb.setAttribute("data-thumb-state", "err");
+                thumb.removeAttribute("data-thumb-started-at");
             });
         }
 
@@ -112,9 +116,11 @@
             }
 
             var now = Date.now();
+            var rotateTick = false;
             if (now - lastThumbNonceAt >= THUMB_REFRESH_MS) {
                 thumbNonce = now;
                 lastThumbNonceAt = now;
+                rotateTick = true;
             }
 
             cameraOrder.forEach(function (cameraName) {
@@ -139,16 +145,30 @@
                     if (baseThumbUrl) {
                         var resolvedThumbUrl = withNonce(baseThumbUrl, thumbNonce);
                         var currentThumbState = thumb.getAttribute("data-thumb-state") || "none";
-                        if (thumb.getAttribute("data-src") !== resolvedThumbUrl && currentThumbState !== "loading") {
+                        var startedAt = Number(thumb.getAttribute("data-thumb-started-at") || "0");
+                        var isStuckLoading = currentThumbState === "loading" && startedAt > 0 && (now - startedAt) > THUMB_LOAD_TIMEOUT_MS;
+
+                        if (isStuckLoading) {
+                            currentThumbState = "timeout";
+                            thumb.setAttribute("data-thumb-state", "timeout");
+                        }
+
+                        var shouldPrime = !thumb.getAttribute("data-src");
+                        var shouldRetry = currentThumbState === "err" || currentThumbState === "timeout";
+                        var shouldRotateRefresh = rotateTick && cameraOrder[refreshCursor] === cameraName;
+
+                        if ((shouldPrime || shouldRetry || shouldRotateRefresh) && currentThumbState !== "loading") {
                             thumb.src = resolvedThumbUrl;
                             thumb.setAttribute("data-src", resolvedThumbUrl);
                             thumb.setAttribute("data-thumb-state", "loading");
+                            thumb.setAttribute("data-thumb-started-at", String(now));
                         }
                         thumb.classList.remove("hidden");
                     } else {
                         thumb.removeAttribute("src");
                         thumb.removeAttribute("data-src");
                         thumb.setAttribute("data-thumb-state", "none");
+                        thumb.removeAttribute("data-thumb-started-at");
                         thumb.classList.add("hidden");
                     }
 
@@ -163,6 +183,10 @@
 
                 tile.classList.toggle("running", running);
             });
+
+            if (rotateTick && cameraOrder.length > 0) {
+                refreshCursor = (refreshCursor + 1) % cameraOrder.length;
+            }
 
             setFocusedTile(focusedIndex);
         },
