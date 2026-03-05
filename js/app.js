@@ -29,8 +29,18 @@
     var debugTitle;
     var debugContent;
     var playerSettingsPanel;
-    var settingRowCycle;
-    var settingCycleValue;
+    var playerSettingsRows = [];
+    var settingCycleModeValue;
+    var settingDwellCameraValue;
+    var settingDwellTimeValue;
+    var settingPictureModeValue;
+    var settingWeatherLocationValue;
+    var settingHudAutoHideValue;
+    var pictureModeLayer;
+    var hudWeather;
+    var weatherOverlay;
+    var weatherOverlayTitle;
+    var weatherOverlayList;
 
     var pollTimer = null;
     var bootstrapRetryTimer = null;
@@ -48,19 +58,51 @@
     var viewStatusTimer = null;
     var debugRefreshTimer = null;
     var autoCycleTimer = null;
+    var weatherRefreshTimer = null;
+    var weatherFetchToken = 0;
     var debugVisible = false;
     var playerSettingsVisible = false;
     var playerHasActiveStream = false;
+    var weatherOverlayVisible = false;
     var pollPlaybackRecoverInFlight = false;
     var lastGridWarmupAt = 0;
-    var autoCycleSeconds = 10;
-    var pendingCycleSeconds = 10;
+    var cycleMode = "TIMED";
+    var pendingCycleMode = "TIMED";
+    var perCameraDwellSeconds = {};
+    var pendingPerCameraDwellSeconds = {};
+    var pendingDwellCameraIndex = 0;
+    var pictureMode = "NORMAL";
+    var pendingPictureMode = "NORMAL";
+    var weatherLocationId = "auto";
+    var pendingWeatherLocationId = "auto";
+    var hudAutoHideSeconds = 0;
+    var pendingHudAutoHideSeconds = 0;
+    var settingsFocusIndex = 0;
+    var weatherData = null;
+    var weatherLastFetchedAt = 0;
+    var weatherLastNoMotionAt = 0;
 
     var MAX_AUTO_PLAYBACK_RETRIES = 4;
     var BACKEND_UNREACHABLE_THRESHOLD = 3;
     var GRID_WARMUP_COOLDOWN_MS = 3000;
-    var AUTO_CYCLE_OPTIONS = [5, 10, 15];
+    var CYCLE_MODE_OPTIONS = ["TIMED", "MOTION"];
+    var DWELL_OPTIONS = [5, 10, 15, 20, 30];
+    var PICTURE_MODE_OPTIONS = ["NORMAL", "NIGHT", "BRIGHT"];
+    var HUD_AUTO_HIDE_OPTIONS = [0, 5, 10, 15];
+    var WEATHER_REFRESH_MS = 10 * 60 * 1000;
     var CYCLE_SETTINGS_STORAGE_KEY = "TVAPP_PLAYER_CYCLE_SECONDS";
+    var CYCLE_MODE_STORAGE_KEY = "TVAPP_PLAYER_CYCLE_MODE";
+    var DWELL_SETTINGS_STORAGE_KEY = "TVAPP_PLAYER_DWELL_SECONDS";
+    var PICTURE_MODE_STORAGE_KEY = "TVAPP_PLAYER_PICTURE_MODE";
+    var WEATHER_LOCATION_STORAGE_KEY = "TVAPP_PLAYER_WEATHER_LOCATION";
+    var HUD_AUTO_HIDE_STORAGE_KEY = "TVAPP_PLAYER_HUD_AUTO_HIDE";
+    var WEATHER_LOCATIONS = [
+        { id: "auto", label: "Auto" },
+        { id: "henderson_nv", label: "Henderson, NV", latitude: 36.0395, longitude: -114.9817 },
+        { id: "las_vegas_nv", label: "Las Vegas, NV", latitude: 36.1699, longitude: -115.1398 },
+        { id: "phoenix_az", label: "Phoenix, AZ", latitude: 33.4484, longitude: -112.0740 },
+        { id: "salt_lake_city_ut", label: "Salt Lake City, UT", latitude: 40.7608, longitude: -111.8910 }
+    ];
 
     var diagnostics = {
         operations: {
@@ -131,24 +173,129 @@
         }
     }
 
-    function normalizeCycleSeconds(value) {
-        var numeric = Number(value) || 0;
-        if (AUTO_CYCLE_OPTIONS.indexOf(numeric) >= 0) {
-            return numeric;
+    function safeParseJson(value) {
+        try {
+            return JSON.parse(String(value || ""));
+        } catch (error) {
+            return null;
         }
-        return 10;
+    }
+
+    function normalizeCycleMode(value) {
+        var normalized = String(value || "").toUpperCase();
+        return CYCLE_MODE_OPTIONS.indexOf(normalized) >= 0 ? normalized : "TIMED";
+    }
+
+    function normalizeDwellSeconds(value) {
+        var numeric = Number(value) || 0;
+        return DWELL_OPTIONS.indexOf(numeric) >= 0 ? numeric : 10;
+    }
+
+    function normalizePictureMode(value) {
+        var normalized = String(value || "").toUpperCase();
+        return PICTURE_MODE_OPTIONS.indexOf(normalized) >= 0 ? normalized : "NORMAL";
+    }
+
+    function normalizeHudAutoHideSeconds(value) {
+        var numeric = Number(value) || 0;
+        return HUD_AUTO_HIDE_OPTIONS.indexOf(numeric) >= 0 ? numeric : 0;
+    }
+
+    function findWeatherLocationById(id) {
+        var targetId = String(id || "").toLowerCase();
+        var i;
+
+        for (i = 0; i < WEATHER_LOCATIONS.length; i += 1) {
+            if (WEATHER_LOCATIONS[i].id === targetId) {
+                return WEATHER_LOCATIONS[i];
+            }
+        }
+
+        return WEATHER_LOCATIONS[0];
+    }
+
+    function normalizeWeatherLocationId(id) {
+        return findWeatherLocationById(id).id;
+    }
+
+    function buildDefaultDwellMap(defaultSeconds) {
+        var fallback = normalizeDwellSeconds(defaultSeconds);
+        var map = {};
+
+        TVAppState.getCameraOrder().forEach(function (cameraName) {
+            map[cameraName] = fallback;
+        });
+
+        return map;
+    }
+
+    function normalizeDwellMap(rawMap, defaultSeconds) {
+        var normalized = buildDefaultDwellMap(defaultSeconds);
+        if (!rawMap || typeof rawMap !== "object") {
+            return normalized;
+        }
+
+        Object.keys(normalized).forEach(function (cameraName) {
+            normalized[cameraName] = normalizeDwellSeconds(rawMap[cameraName]);
+        });
+
+        return normalized;
+    }
+
+    function cloneDwellMap(sourceMap) {
+        return normalizeDwellMap(sourceMap, 10);
     }
 
     function cycleLabel(seconds) {
         return String(seconds) + " sec";
     }
 
-    function loadCyclePreferences() {
-        autoCycleSeconds = normalizeCycleSeconds(safeGetLocalStorage(CYCLE_SETTINGS_STORAGE_KEY));
+    function cycleModeLabel(mode) {
+        return mode === "MOTION" ? "Motion-Only" : "Timed";
     }
 
-    function saveCyclePreferences() {
-        safeSetLocalStorage(CYCLE_SETTINGS_STORAGE_KEY, String(autoCycleSeconds));
+    function pictureModeLabel(mode) {
+        if (mode === "NIGHT") {
+            return "Night";
+        }
+        if (mode === "BRIGHT") {
+            return "Bright";
+        }
+        return "Normal";
+    }
+
+    function hudAutoHideLabel(seconds) {
+        return seconds > 0 ? String(seconds) + " sec" : "Off";
+    }
+
+    function weatherLocationLabel(locationId) {
+        return findWeatherLocationById(locationId).label;
+    }
+
+    function getDwellSecondsForCamera(cameraName, dwellMap) {
+        var map = dwellMap || perCameraDwellSeconds;
+        var fallbackCamera = TVAppState.getCameraOrder()[0] || "";
+        var key = String(cameraName || fallbackCamera || "").toLowerCase();
+        return normalizeDwellSeconds(map[key]);
+    }
+
+    function loadPlayerPreferences() {
+        var legacyCycleSeconds = normalizeDwellSeconds(safeGetLocalStorage(CYCLE_SETTINGS_STORAGE_KEY));
+        var storedDwell = safeParseJson(safeGetLocalStorage(DWELL_SETTINGS_STORAGE_KEY));
+
+        cycleMode = normalizeCycleMode(safeGetLocalStorage(CYCLE_MODE_STORAGE_KEY));
+        perCameraDwellSeconds = normalizeDwellMap(storedDwell, legacyCycleSeconds);
+        pictureMode = normalizePictureMode(safeGetLocalStorage(PICTURE_MODE_STORAGE_KEY));
+        weatherLocationId = normalizeWeatherLocationId(safeGetLocalStorage(WEATHER_LOCATION_STORAGE_KEY));
+        hudAutoHideSeconds = normalizeHudAutoHideSeconds(safeGetLocalStorage(HUD_AUTO_HIDE_STORAGE_KEY));
+    }
+
+    function savePlayerPreferences() {
+        safeSetLocalStorage(CYCLE_MODE_STORAGE_KEY, cycleMode);
+        safeSetLocalStorage(DWELL_SETTINGS_STORAGE_KEY, JSON.stringify(perCameraDwellSeconds));
+        safeSetLocalStorage(PICTURE_MODE_STORAGE_KEY, pictureMode);
+        safeSetLocalStorage(WEATHER_LOCATION_STORAGE_KEY, weatherLocationId);
+        safeSetLocalStorage(HUD_AUTO_HIDE_STORAGE_KEY, String(hudAutoHideSeconds));
     }
 
     function opStart() {
@@ -313,13 +460,60 @@
         GridUI.render(TVAppState.getCameras());
     }
 
-    function renderPlayerSettingsUi() {
-        if (!playerSettingsPanel || !settingCycleValue || !settingRowCycle) {
+    function setPlayerSettingsFocus(index) {
+        if (!playerSettingsRows || !playerSettingsRows.length) {
+            settingsFocusIndex = 0;
             return;
         }
 
-        settingCycleValue.textContent = cycleLabel(pendingCycleSeconds);
-        settingRowCycle.classList.toggle("focused", true);
+        var maxIndex = playerSettingsRows.length - 1;
+        settingsFocusIndex = Math.max(0, Math.min(index, maxIndex));
+        playerSettingsRows.forEach(function (rowElement, rowIndex) {
+            rowElement.classList.toggle("focused", rowIndex === settingsFocusIndex);
+        });
+    }
+
+    function getPendingDwellCameraName() {
+        var cameraOrder = TVAppState.getCameraOrder();
+        if (!cameraOrder || !cameraOrder.length) {
+            return "";
+        }
+
+        var index = Math.max(0, Math.min(pendingDwellCameraIndex, cameraOrder.length - 1));
+        return cameraOrder[index];
+    }
+
+    function renderPlayerSettingsUi() {
+        if (!playerSettingsPanel) {
+            return;
+        }
+
+        var dwellCameraName = getPendingDwellCameraName();
+        if (settingCycleModeValue) {
+            settingCycleModeValue.textContent = cycleModeLabel(pendingCycleMode);
+        }
+
+        if (settingDwellCameraValue) {
+            settingDwellCameraValue.textContent = TVAppState.getCameraLabel(dwellCameraName);
+        }
+
+        if (settingDwellTimeValue) {
+            settingDwellTimeValue.textContent = cycleLabel(getDwellSecondsForCamera(dwellCameraName, pendingPerCameraDwellSeconds));
+        }
+
+        if (settingPictureModeValue) {
+            settingPictureModeValue.textContent = pictureModeLabel(pendingPictureMode);
+        }
+
+        if (settingWeatherLocationValue) {
+            settingWeatherLocationValue.textContent = weatherLocationLabel(pendingWeatherLocationId);
+        }
+
+        if (settingHudAutoHideValue) {
+            settingHudAutoHideValue.textContent = hudAutoHideLabel(pendingHudAutoHideSeconds);
+        }
+
+        setPlayerSettingsFocus(settingsFocusIndex);
     }
 
     function stopAutoCycle() {
@@ -327,21 +521,102 @@
         autoCycleTimer = null;
     }
 
+    function isCameraInMotion(cameraName) {
+        var payload = diagnostics.lastViewStatus;
+        if (!payload || !payload.cameras || typeof payload.cameras !== "object") {
+            return false;
+        }
+
+        var item = payload.cameras[cameraName] || {};
+        if (!item || typeof item !== "object") {
+            return false;
+        }
+
+        if (item.motion === true || item.motion_detected === true || item.motionActive === true || item.in_motion === true) {
+            return true;
+        }
+
+        if (typeof item.motion_level === "number") {
+            return item.motion_level > 0;
+        }
+
+        if (typeof item.motion_score === "number") {
+            return item.motion_score > 0;
+        }
+
+        if (item.events && typeof item.events.motion === "boolean") {
+            return item.events.motion;
+        }
+
+        return false;
+    }
+
+    function findNextMotionCamera(currentCamera, direction) {
+        var cameraOrder = TVAppState.getCameraOrder();
+        if (!cameraOrder || !cameraOrder.length) {
+            return null;
+        }
+
+        var currentIndex = cameraOrder.indexOf(currentCamera);
+        if (currentIndex < 0) {
+            currentIndex = TVAppState.getFocusIndex();
+        }
+        if (currentIndex < 0) {
+            currentIndex = 0;
+        }
+
+        var step = direction === "LEFT" ? -1 : 1;
+        var tries;
+        for (tries = 0; tries < cameraOrder.length; tries += 1) {
+            currentIndex = (currentIndex + step + cameraOrder.length) % cameraOrder.length;
+            if (isCameraInMotion(cameraOrder[currentIndex])) {
+                return cameraOrder[currentIndex];
+            }
+        }
+
+        return null;
+    }
+
+    function getCurrentCameraDwellSeconds() {
+        var currentCamera = TVAppState.getCurrentCamera();
+        return getDwellSecondsForCamera(currentCamera, perCameraDwellSeconds);
+    }
+
     function restartAutoCycle() {
         stopAutoCycle();
 
-        if (TVAppState.getMode() !== "PLAYER" || playerSettingsVisible) {
+        if (TVAppState.getMode() !== "PLAYER" || playerSettingsVisible || PlayerUI.isErrorVisible()) {
             return;
         }
 
+        var delaySeconds = getCurrentCameraDwellSeconds();
+
         autoCycleTimer = setTimeout(function () {
             autoCycleTimer = null;
-            if (TVAppState.getMode() !== "PLAYER" || playerSettingsVisible) {
+            if (TVAppState.getMode() !== "PLAYER" || playerSettingsVisible || PlayerUI.isErrorVisible()) {
+                return;
+            }
+
+            if (cycleMode === "MOTION") {
+                var nextMotionCamera = findNextMotionCamera(TVAppState.getCurrentCamera(), "RIGHT");
+                if (!nextMotionCamera) {
+                    if ((Date.now() - weatherLastNoMotionAt) > 8000) {
+                        PlayerUI.setStatus("Waiting for motion...");
+                        weatherLastNoMotionAt = Date.now();
+                    }
+                    restartAutoCycle();
+                    return;
+                }
+
+                cyclePlayerCamera("RIGHT", {
+                    fromAutoCycle: true,
+                    targetCamera: nextMotionCamera
+                });
                 return;
             }
 
             cyclePlayerCamera("RIGHT", { fromAutoCycle: true });
-        }, autoCycleSeconds * 1000);
+        }, delaySeconds * 1000);
     }
 
     function openPlayerSettings() {
@@ -349,7 +624,13 @@
             return;
         }
 
-        pendingCycleSeconds = autoCycleSeconds;
+        pendingCycleMode = cycleMode;
+        pendingPerCameraDwellSeconds = cloneDwellMap(perCameraDwellSeconds);
+        pendingPictureMode = pictureMode;
+        pendingWeatherLocationId = weatherLocationId;
+        pendingHudAutoHideSeconds = hudAutoHideSeconds;
+        pendingDwellCameraIndex = TVAppState.getFocusIndex();
+        settingsFocusIndex = 0;
         playerSettingsVisible = true;
         playerSettingsPanel.classList.remove("hidden");
         renderPlayerSettingsUi();
@@ -362,9 +643,16 @@
         }
 
         if (applyChanges) {
-            autoCycleSeconds = normalizeCycleSeconds(pendingCycleSeconds);
-            saveCyclePreferences();
-            showToast("Cycle set: " + cycleLabel(autoCycleSeconds), 1200);
+            cycleMode = normalizeCycleMode(pendingCycleMode);
+            perCameraDwellSeconds = cloneDwellMap(pendingPerCameraDwellSeconds);
+            pictureMode = normalizePictureMode(pendingPictureMode);
+            weatherLocationId = normalizeWeatherLocationId(pendingWeatherLocationId);
+            hudAutoHideSeconds = normalizeHudAutoHideSeconds(pendingHudAutoHideSeconds);
+            savePlayerPreferences();
+            applyPictureMode();
+            PlayerUI.setAutoHideSeconds(hudAutoHideSeconds);
+            fetchWeatherForecast({ force: true });
+            showToast("Single-view settings saved", 1200);
         }
 
         playerSettingsVisible = false;
@@ -372,27 +660,86 @@
         restartAutoCycle();
     }
 
-    function handlePlayerSettingsKey(keyCode) {
-        var selectedIndex;
+    function cyclePendingValue(valueList, currentValue, direction) {
+        var currentIndex = valueList.indexOf(currentValue);
+        if (currentIndex < 0) {
+            currentIndex = 0;
+        }
 
+        if (direction === "LEFT") {
+            currentIndex = (currentIndex - 1 + valueList.length) % valueList.length;
+        } else {
+            currentIndex = (currentIndex + 1) % valueList.length;
+        }
+
+        return valueList[currentIndex];
+    }
+
+    function adjustPendingSettings(direction) {
+        var cameraOrder = TVAppState.getCameraOrder();
+        var dwellCameraName;
+
+        if (settingsFocusIndex === 0) {
+            pendingCycleMode = cyclePendingValue(CYCLE_MODE_OPTIONS, pendingCycleMode, direction);
+            return;
+        }
+
+        if (settingsFocusIndex === 1) {
+            if (!cameraOrder || !cameraOrder.length) {
+                return;
+            }
+            if (direction === "LEFT") {
+                pendingDwellCameraIndex = (pendingDwellCameraIndex - 1 + cameraOrder.length) % cameraOrder.length;
+            } else {
+                pendingDwellCameraIndex = (pendingDwellCameraIndex + 1) % cameraOrder.length;
+            }
+            return;
+        }
+
+        if (settingsFocusIndex === 2) {
+            dwellCameraName = getPendingDwellCameraName();
+            pendingPerCameraDwellSeconds[dwellCameraName] = cyclePendingValue(
+                DWELL_OPTIONS,
+                getDwellSecondsForCamera(dwellCameraName, pendingPerCameraDwellSeconds),
+                direction
+            );
+            return;
+        }
+
+        if (settingsFocusIndex === 3) {
+            pendingPictureMode = cyclePendingValue(PICTURE_MODE_OPTIONS, pendingPictureMode, direction);
+            return;
+        }
+
+        if (settingsFocusIndex === 4) {
+            var weatherIds = WEATHER_LOCATIONS.map(function (item) { return item.id; });
+            pendingWeatherLocationId = cyclePendingValue(weatherIds, pendingWeatherLocationId, direction);
+            return;
+        }
+
+        if (settingsFocusIndex === 5) {
+            pendingHudAutoHideSeconds = cyclePendingValue(HUD_AUTO_HIDE_OPTIONS, pendingHudAutoHideSeconds, direction);
+        }
+    }
+
+    function handlePlayerSettingsKey(keyCode) {
         if (keyCode === KEY.RETURN) {
             closePlayerSettings(false);
             return true;
         }
 
+        if (keyCode === KEY.UP) {
+            setPlayerSettingsFocus(settingsFocusIndex - 1);
+            return true;
+        }
+
+        if (keyCode === KEY.DOWN) {
+            setPlayerSettingsFocus(settingsFocusIndex + 1);
+            return true;
+        }
+
         if (keyCode === KEY.LEFT || keyCode === KEY.RIGHT) {
-            selectedIndex = AUTO_CYCLE_OPTIONS.indexOf(pendingCycleSeconds);
-            if (selectedIndex < 0) {
-                selectedIndex = 0;
-            }
-
-            if (keyCode === KEY.LEFT) {
-                selectedIndex = (selectedIndex - 1 + AUTO_CYCLE_OPTIONS.length) % AUTO_CYCLE_OPTIONS.length;
-            } else {
-                selectedIndex = (selectedIndex + 1) % AUTO_CYCLE_OPTIONS.length;
-            }
-
-            pendingCycleSeconds = AUTO_CYCLE_OPTIONS[selectedIndex];
+            adjustPendingSettings(keyCode === KEY.LEFT ? "LEFT" : "RIGHT");
             renderPlayerSettingsUi();
             return true;
         }
@@ -422,9 +769,14 @@
             currentIndex = 0;
         }
 
-        var delta = direction === "LEFT" ? -1 : 1;
-        var nextIndex = (currentIndex + delta + cameraOrder.length) % cameraOrder.length;
-        var nextCamera = cameraOrder[nextIndex];
+        var nextCamera = options.targetCamera || null;
+        var nextIndex = nextCamera ? cameraOrder.indexOf(nextCamera) : -1;
+
+        if (nextIndex < 0) {
+            var delta = direction === "LEFT" ? -1 : 1;
+            nextIndex = (currentIndex + delta + cameraOrder.length) % cameraOrder.length;
+            nextCamera = cameraOrder[nextIndex];
+        }
 
         if (!nextCamera || nextCamera === currentCamera) {
             restartAutoCycle();
@@ -435,13 +787,267 @@
         GridUI.setFocusIndex(nextIndex);
         TVAppState.setCurrentCamera(nextCamera);
         PlayerUI.enter(TVAppState.getCameraLabel(nextCamera));
-        PlayerUI.setStatus(options.fromAutoCycle ? "Auto cycling..." : "Switching...");
+        if (options.fromAutoCycle && cycleMode === "MOTION") {
+            PlayerUI.setStatus("Motion detected: switching...");
+        } else {
+            PlayerUI.setStatus(options.fromAutoCycle ? "Auto cycling..." : "Switching...");
+        }
 
         if (!options.fromAutoCycle) {
             showToast("Camera: " + TVAppState.getCameraLabel(nextCamera), 1000);
         }
 
         openAndPlayCamera(nextCamera, { reopen: true });
+    }
+
+    function applyPictureMode() {
+        if (!pictureModeLayer) {
+            return;
+        }
+
+        pictureModeLayer.classList.remove("night", "bright");
+        if (pictureMode === "NIGHT") {
+            pictureModeLayer.classList.remove("hidden");
+            pictureModeLayer.classList.add("night");
+            return;
+        }
+
+        if (pictureMode === "BRIGHT") {
+            pictureModeLayer.classList.remove("hidden");
+            pictureModeLayer.classList.add("bright");
+            return;
+        }
+
+        pictureModeLayer.classList.add("hidden");
+    }
+
+    function weatherCodeLabel(code) {
+        var map = {
+            0: "Clear",
+            1: "Mainly clear",
+            2: "Partly cloudy",
+            3: "Cloudy",
+            45: "Fog",
+            48: "Rime fog",
+            51: "Drizzle",
+            53: "Drizzle",
+            55: "Drizzle",
+            56: "Freezing drizzle",
+            57: "Freezing drizzle",
+            61: "Rain",
+            63: "Rain",
+            65: "Heavy rain",
+            66: "Freezing rain",
+            67: "Freezing rain",
+            71: "Snow",
+            73: "Snow",
+            75: "Heavy snow",
+            80: "Rain showers",
+            81: "Rain showers",
+            82: "Heavy showers",
+            95: "Thunderstorm",
+            96: "Thunderstorm",
+            99: "Thunderstorm"
+        };
+
+        return map[code] || "Unknown";
+    }
+
+    function formatWeatherTemp(value) {
+        var numeric = Number(value);
+        if (isNaN(numeric)) {
+            return "--";
+        }
+
+        var fahrenheit = Math.round((numeric * 9 / 5) + 32);
+        return String(fahrenheit) + "F";
+    }
+
+    function formatWeatherHour(isoTime) {
+        var date = new Date(isoTime);
+        if (isNaN(date.getTime())) {
+            return "--:--";
+        }
+
+        return date.toLocaleTimeString([], {
+            hour: "numeric",
+            minute: "2-digit"
+        });
+    }
+
+    function renderWeatherUi() {
+        if (hudWeather) {
+            if (weatherData) {
+                hudWeather.textContent = weatherData.locationLabel + " | " + formatWeatherTemp(weatherData.currentTempC) + " " + weatherCodeLabel(weatherData.currentCode);
+            } else {
+                hudWeather.textContent = "Weather unavailable";
+            }
+        }
+
+        if (!weatherOverlayTitle || !weatherOverlayList) {
+            return;
+        }
+
+        if (!weatherData) {
+            weatherOverlayTitle.textContent = "Weather Forecast";
+            weatherOverlayList.innerHTML = '<div class="weather-row"><span class="weather-time">No forecast data</span><span class="weather-temp">--</span><span class="weather-desc">--</span></div>';
+            return;
+        }
+
+        weatherOverlayTitle.textContent = weatherData.locationLabel + " Hourly";
+        weatherOverlayList.innerHTML = weatherData.hourly.map(function (entry) {
+            return [
+                '<div class="weather-row">',
+                '<span class="weather-time">' + formatWeatherHour(entry.time) + '</span>',
+                '<span class="weather-temp">' + formatWeatherTemp(entry.tempC) + '</span>',
+                '<span class="weather-desc">' + weatherCodeLabel(entry.code) + '</span>',
+                '</div>'
+            ].join("");
+        }).join("");
+    }
+
+    function resolveWeatherLocation() {
+        var selected = findWeatherLocationById(weatherLocationId);
+        if (selected.id !== "auto") {
+            return Promise.resolve(selected);
+        }
+
+        var fallback = findWeatherLocationById("henderson_nv");
+        return new Promise(function (resolve) {
+            if (!global.navigator || !global.navigator.geolocation || typeof global.navigator.geolocation.getCurrentPosition !== "function") {
+                resolve(fallback);
+                return;
+            }
+
+            var resolved = false;
+            var timeoutId = setTimeout(function () {
+                if (resolved) {
+                    return;
+                }
+                resolved = true;
+                resolve(fallback);
+            }, 1700);
+
+            global.navigator.geolocation.getCurrentPosition(function (position) {
+                if (resolved) {
+                    return;
+                }
+                resolved = true;
+                clearTimeout(timeoutId);
+                resolve({
+                    id: "auto",
+                    label: "Auto",
+                    latitude: position.coords.latitude,
+                    longitude: position.coords.longitude
+                });
+            }, function () {
+                if (resolved) {
+                    return;
+                }
+                resolved = true;
+                clearTimeout(timeoutId);
+                resolve(fallback);
+            }, {
+                enableHighAccuracy: false,
+                timeout: 1300,
+                maximumAge: 300000
+            });
+        });
+    }
+
+    function scheduleWeatherRefresh() {
+        clearTimeout(weatherRefreshTimer);
+        weatherRefreshTimer = setTimeout(function () {
+            fetchWeatherForecast({ force: true });
+        }, WEATHER_REFRESH_MS);
+    }
+
+    function fetchWeatherForecast(options) {
+        options = options || {};
+
+        var isFresh = (Date.now() - weatherLastFetchedAt) < (WEATHER_REFRESH_MS / 2);
+        if (!options.force && isFresh) {
+            renderWeatherUi();
+            return Promise.resolve(weatherData);
+        }
+
+        var fetchToken = ++weatherFetchToken;
+        return resolveWeatherLocation().then(function (location) {
+            var weatherUrl = [
+                "https://api.open-meteo.com/v1/forecast?timezone=auto",
+                "latitude=" + encodeURIComponent(String(location.latitude)),
+                "longitude=" + encodeURIComponent(String(location.longitude)),
+                "current=temperature_2m,weather_code",
+                "hourly=temperature_2m,weather_code",
+                "forecast_days=2"
+            ].join("&");
+
+            return global.fetch(weatherUrl, { cache: "no-store" }).then(function (response) {
+                if (!response || !response.ok) {
+                    throw new Error("Weather request failed");
+                }
+                return response.json();
+            }).then(function (payload) {
+                if (fetchToken !== weatherFetchToken) {
+                    return null;
+                }
+
+                var hourly = [];
+                var hourlyTime = payload && payload.hourly ? payload.hourly.time || [] : [];
+                var hourlyTemp = payload && payload.hourly ? payload.hourly.temperature_2m || [] : [];
+                var hourlyCode = payload && payload.hourly ? payload.hourly.weather_code || [] : [];
+                var now = Date.now();
+                var i;
+
+                for (i = 0; i < hourlyTime.length && hourly.length < 8; i += 1) {
+                    var timeValue = new Date(hourlyTime[i]);
+                    if (isNaN(timeValue.getTime()) || timeValue.getTime() < now) {
+                        continue;
+                    }
+
+                    hourly.push({
+                        time: hourlyTime[i],
+                        tempC: hourlyTemp[i],
+                        code: Number(hourlyCode[i]) || 0
+                    });
+                }
+
+                weatherData = {
+                    locationLabel: location.label,
+                    currentTempC: payload && payload.current ? payload.current.temperature_2m : null,
+                    currentCode: payload && payload.current ? Number(payload.current.weather_code) || 0 : 0,
+                    hourly: hourly,
+                    updatedAt: nowIso()
+                };
+
+                weatherLastFetchedAt = Date.now();
+                renderWeatherUi();
+                scheduleWeatherRefresh();
+                return weatherData;
+            });
+        }).catch(function () {
+            if (fetchToken !== weatherFetchToken) {
+                return null;
+            }
+            weatherData = null;
+            renderWeatherUi();
+            scheduleWeatherRefresh();
+            return null;
+        });
+    }
+
+    function setWeatherOverlayVisible(visible) {
+        var allowed = visible && TVAppState.getMode() === "PLAYER";
+        weatherOverlayVisible = !!allowed;
+
+        if (weatherOverlay) {
+            weatherOverlay.classList.toggle("hidden", !weatherOverlayVisible);
+        }
+
+        if (weatherOverlayVisible) {
+            fetchWeatherForecast({ force: false });
+            PlayerUI.pingHudActivity();
+        }
     }
 
     function setDebugVisible(visible) {
@@ -638,6 +1244,7 @@
         lastPlayTimeTick = 0;
 
         stopAutoCycle();
+    setWeatherOverlayVisible(false);
 
         PlayerUI.exit();
         TVPlayer.stopAndClose();
@@ -657,6 +1264,14 @@
         gridScreen.classList.add("hidden");
         playerScreen.classList.remove("hidden");
         PlayerUI.enter(TVAppState.getCameraLabel(cameraName));
+        PlayerUI.setAutoHideSeconds(hudAutoHideSeconds);
+        applyPictureMode();
+        fetchWeatherForecast({ force: false });
+
+        if (weatherOverlayVisible) {
+            setWeatherOverlayVisible(true);
+        }
+
         stopAutoCycle();
     }
 
@@ -1043,6 +1658,10 @@
             return;
         }
 
+        if (keyCode !== KEY.PAUSE && keyCode !== KEY.PLAY && keyCode !== KEY.PLAY_PAUSE) {
+            PlayerUI.pingHudActivity();
+        }
+
         if (PlayerUI.isErrorVisible()) {
             if (keyCode === KEY.LEFT) {
                 PlayerUI.moveErrorActionFocus("LEFT");
@@ -1073,13 +1692,22 @@
             return;
         }
 
-        if (keyCode === KEY.RETURN) {
-            switchToGrid();
+        if (keyCode === KEY.UP) {
+            setWeatherOverlayVisible(true);
             return;
         }
 
-        if (keyCode === KEY.UP || keyCode === KEY.DOWN) {
-            PlayerUI.toggleHud();
+        if (keyCode === KEY.DOWN) {
+            if (weatherOverlayVisible) {
+                setWeatherOverlayVisible(false);
+                return;
+            }
+            PlayerUI.showHud(true);
+            return;
+        }
+
+        if (keyCode === KEY.RETURN) {
+            switchToGrid();
             return;
         }
 
@@ -1220,6 +1848,7 @@
         clearTimeout(playbackRetryTimer);
         clearTimeout(firstFrameWatchTimer);
         clearTimeout(resizeRectTimer);
+        clearTimeout(weatherRefreshTimer);
         clearInterval(diagnosticsTimer);
         clearInterval(viewStatusTimer);
         clearInterval(debugRefreshTimer);
@@ -1329,8 +1958,27 @@
         debugTitle = byId("debug-title");
         debugContent = byId("debug-content");
         playerSettingsPanel = byId("player-settings");
-        settingRowCycle = byId("setting-row-cycle");
-        settingCycleValue = byId("setting-cycle-value");
+        playerSettingsRows = [
+            byId("setting-row-cycle-mode"),
+            byId("setting-row-dwell-camera"),
+            byId("setting-row-dwell-time"),
+            byId("setting-row-picture-mode"),
+            byId("setting-row-weather-location"),
+            byId("setting-row-hud-autohide")
+        ].filter(function (row) {
+            return !!row;
+        });
+        settingCycleModeValue = byId("setting-cycle-mode-value");
+        settingDwellCameraValue = byId("setting-dwell-camera-value");
+        settingDwellTimeValue = byId("setting-dwell-time-value");
+        settingPictureModeValue = byId("setting-picture-mode-value");
+        settingWeatherLocationValue = byId("setting-weather-location-value");
+        settingHudAutoHideValue = byId("setting-hud-autohide-value");
+        pictureModeLayer = byId("picture-mode-layer");
+        hudWeather = byId("hud-weather");
+        weatherOverlay = byId("weather-overlay");
+        weatherOverlayTitle = byId("weather-overlay-title");
+        weatherOverlayList = byId("weather-overlay-list");
 
         GridUI.init(byId("camera-grid"), TVAppState.getCameraOrder());
         PlayerUI.init({
@@ -1382,9 +2030,19 @@
 
     function initialize() {
         initDom();
-        loadCyclePreferences();
-        pendingCycleSeconds = autoCycleSeconds;
+        loadPlayerPreferences();
+        pendingCycleMode = cycleMode;
+        pendingPerCameraDwellSeconds = cloneDwellMap(perCameraDwellSeconds);
+        pendingPictureMode = pictureMode;
+        pendingWeatherLocationId = weatherLocationId;
+        pendingHudAutoHideSeconds = hudAutoHideSeconds;
+        pendingDwellCameraIndex = TVAppState.getFocusIndex();
+        PlayerUI.setAutoHideSeconds(hudAutoHideSeconds);
+        applyPictureMode();
+        setWeatherOverlayVisible(false);
         renderPlayerSettingsUi();
+        renderWeatherUi();
+        fetchWeatherForecast({ force: true });
         bindStateListeners();
         bindLifecycle();
         registerRemoteKeys();

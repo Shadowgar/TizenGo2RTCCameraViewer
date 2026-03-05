@@ -15,8 +15,29 @@
     var backButton;
 
     var clockInterval = null;
+    var hudAutoHideSeconds = 0;
+    var hudAutoHideTimer = null;
     var errorActions = ["retry", "back"];
     var focusedErrorActionIndex = 0;
+
+    function clearHudAutoHideTimer() {
+        if (hudAutoHideTimer) {
+            clearTimeout(hudAutoHideTimer);
+            hudAutoHideTimer = null;
+        }
+    }
+
+    function scheduleHudAutoHide() {
+        clearHudAutoHideTimer();
+
+        if (!hudElement || hudAutoHideSeconds <= 0) {
+            return;
+        }
+
+        hudAutoHideTimer = setTimeout(function () {
+            show(hudElement, false);
+        }, hudAutoHideSeconds * 1000);
+    }
 
     function show(element, shouldShow) {
         if (!element) {
@@ -59,6 +80,7 @@
             this.showLoading(true);
             this.showBuffering(false);
             this.hideError();
+            scheduleHudAutoHide();
 
             if (clockInterval) {
                 clearInterval(clockInterval);
@@ -71,6 +93,7 @@
             this.showLoading(false);
             this.showBuffering(false);
             this.hideError();
+            clearHudAutoHideTimer();
             if (clockInterval) {
                 clearInterval(clockInterval);
                 clockInterval = null;
@@ -79,6 +102,11 @@
 
         showHud: function (visible) {
             show(hudElement, !!visible);
+            if (visible) {
+                scheduleHudAutoHide();
+            } else {
+                clearHudAutoHideTimer();
+            }
         },
 
         toggleHud: function () {
@@ -87,6 +115,23 @@
             }
             var shouldShow = hudElement.classList.contains("hidden");
             this.showHud(shouldShow);
+        },
+
+        setAutoHideSeconds: function (seconds) {
+            hudAutoHideSeconds = Math.max(0, Number(seconds) || 0);
+            if (!hudElement || hudElement.classList.contains("hidden")) {
+                return;
+            }
+
+            scheduleHudAutoHide();
+        },
+
+        pingHudActivity: function () {
+            if (!hudElement) {
+                return;
+            }
+            show(hudElement, true);
+            scheduleHudAutoHide();
         },
 
         setCameraName: function (name) {
@@ -115,6 +160,7 @@
             }
             setErrorFocus(0);
             show(errorElement, true);
+            clearHudAutoHideTimer();
         },
 
         hideError: function () {

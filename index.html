@@ -25,22 +25,52 @@
 
         <section id="player-screen" class="screen hidden" aria-label="Player screen">
             <div id="avplay-surface" class="avplay-surface"></div>
+            <div id="picture-mode-layer" class="picture-mode-layer hidden"></div>
 
             <div id="player-hud" class="player-hud">
                 <div class="hud-title-row">
                     <span id="hud-camera-name" class="hud-camera-name">Camera</span>
-                    <span id="hud-clock" class="hud-clock">--:--:--</span>
+                    <div class="hud-meta">
+                        <span id="hud-weather" class="hud-weather">Weather --</span>
+                        <span id="hud-clock" class="hud-clock">--:--:--</span>
+                    </div>
                 </div>
                 <div id="hud-status" class="hud-status">Idle</div>
             </div>
 
             <aside id="player-settings" class="player-settings hidden" aria-label="Player settings">
-                <div class="player-settings-title">Player Cycle Settings</div>
-                <div id="setting-row-cycle" class="setting-row focused" data-setting-row="cycle">
-                    <span class="setting-label">Single View Cycle</span>
-                    <span id="setting-cycle-value" class="setting-value">10 sec</span>
+                <div class="player-settings-title">Single View Settings</div>
+                <div id="setting-row-cycle-mode" class="setting-row focused" data-setting-row="cycle_mode">
+                    <span class="setting-label">Cycle Mode</span>
+                    <span id="setting-cycle-mode-value" class="setting-value">Timed</span>
                 </div>
-                <div class="settings-hint">Left/Right: 5/10/15 sec. Enter: Save. Back: Cancel.</div>
+                <div id="setting-row-dwell-camera" class="setting-row" data-setting-row="dwell_camera">
+                    <span class="setting-label">Dwell Camera</span>
+                    <span id="setting-dwell-camera-value" class="setting-value">Driveway</span>
+                </div>
+                <div id="setting-row-dwell-time" class="setting-row" data-setting-row="dwell_time">
+                    <span class="setting-label">Dwell Time</span>
+                    <span id="setting-dwell-time-value" class="setting-value">10 sec</span>
+                </div>
+                <div id="setting-row-picture-mode" class="setting-row" data-setting-row="picture_mode">
+                    <span class="setting-label">Picture Mode</span>
+                    <span id="setting-picture-mode-value" class="setting-value">Normal</span>
+                </div>
+                <div id="setting-row-weather-location" class="setting-row" data-setting-row="weather_location">
+                    <span class="setting-label">Weather Location</span>
+                    <span id="setting-weather-location-value" class="setting-value">Auto</span>
+                </div>
+                <div id="setting-row-hud-autohide" class="setting-row" data-setting-row="hud_autohide">
+                    <span class="setting-label">HUD Auto-Hide</span>
+                    <span id="setting-hud-autohide-value" class="setting-value">Off</span>
+                </div>
+                <div class="settings-hint">Up/Down: Row. Left/Right: Change. Enter: Save. Back: Cancel.</div>
+            </aside>
+
+            <aside id="weather-overlay" class="weather-overlay hidden" aria-label="Hourly weather">
+                <div id="weather-overlay-title" class="weather-overlay-title">Weather Forecast</div>
+                <div id="weather-overlay-list" class="weather-overlay-list"></div>
+                <div class="weather-overlay-hint">Down: Close forecast overlay</div>
             </aside>
 
             <div id="player-loading" class="center-badge hidden">Starting stream…</div>

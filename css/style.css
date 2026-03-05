@@ -1,3 +1,20 @@
+:root {
+    --gh-bg-canvas: #0d1117;
+    --gh-bg-canvas-subtle: #161b22;
+    --gh-bg-surface: #1f2937;
+    --gh-bg-overlay: rgba(22, 27, 34, 0.94);
+    --gh-bg-overlay-strong: rgba(13, 17, 23, 0.88);
+    --gh-border-default: #30363d;
+    --gh-border-muted: #21262d;
+    --gh-text-primary: #e6edf3;
+    --gh-text-secondary: #9da7b3;
+    --gh-text-muted: #7d8590;
+    --gh-accent: #2f81f7;
+    --gh-success: #3fb950;
+    --gh-danger: #f85149;
+    --gh-warning: #d29922;
+}
+
 html,
 body {
     width: 100%;
@@ -5,9 +22,9 @@ body {
     margin: 0;
     padding: 0;
     overflow: hidden;
-    background: transparent;
-    color: #eef4ff;
-    font-family: Arial, sans-serif;
+    background: var(--gh-bg-canvas);
+    color: var(--gh-text-primary);
+    font-family: "Mona Sans", "Hubot Sans", "Segoe UI Variable", "Trebuchet MS", sans-serif;
 }
 
 * {
@@ -25,7 +42,10 @@ body {
 }
 
 #grid-screen {
-    background: #080a10;
+    background:
+        radial-gradient(circle at 18% 10%, rgba(47, 129, 247, 0.12), transparent 42%),
+        radial-gradient(circle at 86% 85%, rgba(63, 185, 80, 0.12), transparent 40%),
+        linear-gradient(170deg, #0d1117 0%, #111827 58%, #0d1117 100%);
 }
 
 #player-screen {
@@ -42,18 +62,20 @@ body {
     align-items: baseline;
     height: 96px;
     padding: 24px 40px 12px;
+    background: linear-gradient(180deg, rgba(22, 27, 34, 0.78), rgba(22, 27, 34, 0.16));
 }
 
 .app-title {
     margin: 0;
     font-size: 38px;
     font-weight: 700;
+    color: var(--gh-text-primary);
 }
 
 .backend-info {
     max-width: 45%;
     text-align: right;
-    color: #92a2bf;
+    color: var(--gh-text-secondary);
     font-size: 20px;
     white-space: nowrap;
     overflow: hidden;
@@ -74,12 +96,13 @@ body {
     width: auto;
     height: auto;
     min-height: 0;
-    border: 2px solid #324059;
+    border: 2px solid var(--gh-border-default);
     border-radius: 16px;
-    background: linear-gradient(160deg, #0f1726 0%, #0c111a 100%);
+    background: linear-gradient(155deg, rgba(31, 41, 55, 0.92) 0%, rgba(22, 27, 34, 0.96) 100%);
     padding: 20px;
     transition: border-color 120ms linear;
     overflow: hidden;
+    box-shadow: 0 12px 28px rgba(1, 4, 9, 0.45);
 }
 
 .tile-thumb-wrap {
@@ -118,15 +141,15 @@ body {
 }
 
 .camera-tile.focused {
-    border-color: #5db3ff;
+    border-color: var(--gh-accent);
 }
 
 .camera-tile.running {
-    border-color: #2e9347;
+    border-color: var(--gh-success);
 }
 
 .camera-tile.focused.running {
-    border-color: #4dd67a;
+    border-color: #56d364;
 }
 
 .tile-head {
@@ -149,14 +172,15 @@ body {
     font-size: 16px;
     letter-spacing: 0.8px;
     font-weight: 700;
-    color: #9fb6da;
-    border: 1px solid #3b4f72;
+    color: var(--gh-text-secondary);
+    border: 1px solid var(--gh-border-default);
+    background: rgba(31, 41, 55, 0.65);
 }
 
 .tile-live.live {
-    color: #cfffe0;
-    border-color: #36bf66;
-    background: rgba(54, 191, 102, 0.18);
+    color: #c8f7cf;
+    border-color: var(--gh-success);
+    background: rgba(63, 185, 80, 0.18);
 }
 
 .tile-status {
@@ -164,14 +188,14 @@ body {
     z-index: 1;
     margin-top: 26px;
     font-size: 24px;
-    color: #c5d3ea;
+    color: var(--gh-text-primary);
 }
 
 .tile-debug {
     position: relative;
     z-index: 1;
     margin-top: 10px;
-    color: #9bb1d4;
+    color: var(--gh-text-secondary);
     font-size: 16px;
     line-height: 1.2;
     white-space: nowrap;
@@ -185,7 +209,7 @@ body {
     left: 22px;
     right: 22px;
     bottom: 18px;
-    color: #8fa2c3;
+    color: var(--gh-text-muted);
     font-size: 18px;
     white-space: nowrap;
     overflow: hidden;
@@ -197,7 +221,7 @@ body {
     left: 40px;
     right: 40px;
     bottom: 10px;
-    color: #7f95b8;
+    color: var(--gh-text-muted);
     font-size: 20px;
 }
 
@@ -208,8 +232,8 @@ body {
     top: 120px;
     bottom: 52px;
     border-radius: 14px;
-    border: 1px solid #4a5f85;
-    background: rgba(7, 10, 17, 0.95);
+    border: 1px solid var(--gh-border-default);
+    background: rgba(13, 17, 23, 0.96);
     z-index: 30;
     display: flex;
     flex-direction: column;
@@ -220,13 +244,13 @@ body {
     font-size: 24px;
     font-weight: 700;
     padding: 16px 18px;
-    border-bottom: 1px solid #2f3f5f;
+    border-bottom: 1px solid var(--gh-border-default);
 }
 
 .debug-content {
     margin: 0;
     padding: 16px 18px 20px;
-    color: #bdd5ff;
+    color: #c9d1d9;
     white-space: pre-wrap;
     word-break: break-word;
     overflow: auto;
@@ -244,6 +268,21 @@ body {
     background: transparent;
 }
 
+.picture-mode-layer {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 4;
+}
+
+.picture-mode-layer.night {
+    background: rgba(10, 20, 40, 0.3);
+}
+
+.picture-mode-layer.bright {
+    background: rgba(255, 255, 255, 0.12);
+}
+
 .player-hud {
     position: absolute;
     top: 26px;
@@ -251,7 +290,8 @@ body {
     right: 30px;
     padding: 16px 18px;
     border-radius: 12px;
-    background: rgba(0, 0, 0, 0.52);
+    border: 1px solid var(--gh-border-default);
+    background: var(--gh-bg-overlay-strong);
     transition: opacity 120ms linear;
     z-index: 10;
 }
@@ -262,6 +302,12 @@ body {
     align-items: center;
 }
 
+.hud-meta {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
 .hud-camera-name {
     font-size: 40px;
     font-weight: 700;
@@ -269,13 +315,22 @@ body {
 
 .hud-clock {
     font-size: 30px;
-    color: #d0d8e9;
+    color: var(--gh-text-secondary);
+}
+
+.hud-weather {
+    font-size: 22px;
+    color: #79c0ff;
+    max-width: 560px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .hud-status {
     margin-top: 8px;
     font-size: 24px;
-    color: #c6d7f6;
+    color: var(--gh-text-secondary);
 }
 
 .player-settings {
@@ -286,10 +341,12 @@ body {
     width: 760px;
     max-width: calc(100% - 80px);
     border-radius: 14px;
-    border: 1px solid #4a5f85;
-    background: rgba(7, 10, 17, 0.96);
+    border: 1px solid var(--gh-border-default);
+    background: var(--gh-bg-overlay);
     z-index: 25;
     padding: 18px;
+    max-height: calc(100% - 100px);
+    overflow: auto;
 }
 
 .player-settings-title {
@@ -300,21 +357,30 @@ body {
 .setting-row {
     margin-top: 14px;
     border-radius: 10px;
-    border: 1px solid #4a5f85;
+    border: 1px solid var(--gh-border-default);
     padding: 10px 12px;
     display: flex;
     justify-content: space-between;
     align-items: center;
 }
 
+.setting-label {
+    width: 52%;
+}
+
+.setting-value {
+    width: 48%;
+    text-align: right;
+}
+
 .setting-row.focused {
-    border-color: #5db3ff;
-    background: rgba(93, 179, 255, 0.16);
+    border-color: var(--gh-accent);
+    background: rgba(47, 129, 247, 0.16);
 }
 
 .setting-label {
     font-size: 22px;
-    color: #d7e7ff;
+    color: var(--gh-text-primary);
 }
 
 .setting-value {
@@ -325,7 +391,63 @@ body {
 .settings-hint {
     margin-top: 12px;
     font-size: 18px;
-    color: #9bb1d4;
+    color: var(--gh-text-secondary);
+}
+
+.weather-overlay {
+    position: absolute;
+    right: 30px;
+    top: 108px;
+    width: 560px;
+    max-width: calc(100% - 60px);
+    border-radius: 14px;
+    border: 1px solid var(--gh-border-default);
+    background: var(--gh-bg-overlay);
+    z-index: 22;
+    padding: 16px;
+}
+
+.weather-overlay-title {
+    font-size: 26px;
+    font-weight: 700;
+}
+
+.weather-overlay-list {
+    margin-top: 10px;
+}
+
+.weather-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 7px 0;
+    border-bottom: 1px solid var(--gh-border-muted);
+}
+
+.weather-row:last-child {
+    border-bottom: 0;
+}
+
+.weather-time {
+    font-size: 18px;
+    color: var(--gh-text-primary);
+}
+
+.weather-temp {
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--gh-text-primary);
+}
+
+.weather-desc {
+    font-size: 17px;
+    color: var(--gh-text-secondary);
+}
+
+.weather-overlay-hint {
+    margin-top: 10px;
+    font-size: 16px;
+    color: var(--gh-text-muted);
 }
 
 .center-badge {
@@ -336,7 +458,8 @@ body {
     padding: 15px 28px;
     border-radius: 12px;
     font-size: 28px;
-    background: rgba(0, 0, 0, 0.7);
+    border: 1px solid var(--gh-border-default);
+    background: rgba(13, 17, 23, 0.82);
     z-index: 12;
 }
 
@@ -349,8 +472,8 @@ body {
     max-width: calc(100% - 80px);
     padding: 24px;
     border-radius: 16px;
-    border: 1px solid #6b2630;
-    background: rgba(28, 9, 14, 0.94);
+    border: 1px solid #8b2b31;
+    background: rgba(36, 11, 16, 0.95);
     z-index: 20;
 }
 
@@ -371,16 +494,16 @@ body {
 .error-action {
     min-width: 180px;
     border-radius: 999px;
-    border: 2px solid #58739d;
+    border: 2px solid var(--gh-border-default);
     background: transparent;
-    color: #eaf1ff;
+    color: var(--gh-text-primary);
     font-size: 24px;
     font-weight: 700;
     padding: 12px 18px;
 }
 
 .error-action.focused {
-    border-color: #5db3ff;
+    border-color: var(--gh-accent);
 }
 
 .toast {
@@ -391,8 +514,9 @@ body {
     max-width: 70%;
     padding: 10px 18px;
     border-radius: 999px;
-    background: rgba(0, 0, 0, 0.74);
-    color: #dde8ff;
+    border: 1px solid var(--gh-border-default);
+    background: rgba(22, 27, 34, 0.9);
+    color: var(--gh-text-primary);
     font-size: 20px;
     z-index: 40;
 }
@@ -404,8 +528,9 @@ body {
     bottom: 6px;
     padding: 8px 12px;
     border-radius: 8px;
-    background: rgba(0, 0, 0, 0.55);
-    color: #bdd5ff;
+    border: 1px solid var(--gh-border-muted);
+    background: rgba(13, 17, 23, 0.76);
+    color: var(--gh-text-secondary);
     font-size: 15px;
     line-height: 1.2;
     z-index: 45;
