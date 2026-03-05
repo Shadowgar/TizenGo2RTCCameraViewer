@@ -1,3 +1,4 @@
+/*global GridUI, PlayerUI, Promise, TVApi, TVAppState, TVPlayer, tizen */
 (function (global) {
     "use strict";
 
@@ -29,6 +30,7 @@
     var lastBackPressAt = 0;
     var playbackRetryTimer = null;
     var playbackRetryAttempt = 0;
+    var resizeRectTimer = null;
 
     function byId(id) {
         return document.getElementById(id);
@@ -88,10 +90,17 @@
         return null;
     }
 
-    async function openAndPlayCamera(cameraName, options) {
+    function openAndPlayCamera(cameraName, options) {
         options = options || {};
         var token = ++openRequestToken;
         var shouldReopen = options.reopen !== false;
+        var hlsUrl = null;
+
+        function cancelledError() {
+            var error = new Error("Superseded open request");
+            error.cancelled = true;
+            return error;
+        }
 
         clearTimeout(playbackRetryTimer);
         playbackRetryTimer = null;
@@ -100,63 +109,68 @@
         PlayerUI.showLoading(true);
         PlayerUI.setStatus("Requesting stream...");
 
-        try {
-            var hlsUrl = null;
+        var openPromise = shouldReopen ? TVApi.openCamera(cameraName, "main") : Promise.resolve(null);
 
-            if (shouldReopen) {
-                var openResponse = await TVApi.openCamera(cameraName, "main");
+        return openPromise
+            .then(function (openResponse) {
+                if (token !== openRequestToken) {
+                    throw cancelledError();
+                }
+
+                if (openResponse) {
+                    TVAppState.applyBackendState(openResponse);
+
+                    if (openResponse.state_version !== undefined) {
+                        TVAppState.applyBackendState({ state_version: openResponse.state_version });
+                    }
+
+                    if (openResponse.camera) {
+                        TVAppState.setCameraRunning(openResponse.camera, false, "STARTING");
+                    }
+                }
+
+                hlsUrl = extractHlsUrl(openResponse, cameraName);
+
+                if (!hlsUrl) {
+                    throw new Error("Backend did not provide playback.hls_url");
+                }
+
+                TVAppState.setCameraPlaybackUrl(cameraName, hlsUrl);
+                PlayerUI.setStatus("Waiting for publisher...");
+                return TVAppState.waitForCameraRunning(cameraName, TVAppState.getStartupGraceMs());
+            })
+            .then(function () {
+                if (token !== openRequestToken) {
+                    throw cancelledError();
+                }
+
+                PlayerUI.setStatus("Starting AVPlay...");
+                return TVPlayer.play(hlsUrl);
+            })
+            .then(function () {
                 if (token !== openRequestToken) {
                     return;
                 }
 
-                TVAppState.applyBackendState(openResponse);
-
-                if (openResponse.state_version !== undefined) {
-                    TVAppState.applyBackendState({ state_version: openResponse.state_version });
+                PlayerUI.showLoading(false);
+                PlayerUI.showBuffering(false);
+                PlayerUI.setStatus("LIVE");
+                playbackRetryAttempt = 0;
+            })
+            .catch(function (error) {
+                if (error && error.cancelled) {
+                    return;
                 }
 
-                if (openResponse.camera) {
-                    TVAppState.setCameraRunning(openResponse.camera, false, "STARTING");
+                if (token !== openRequestToken) {
+                    return;
                 }
 
-                hlsUrl = extractHlsUrl(openResponse, cameraName);
-            } else {
-                hlsUrl = extractHlsUrl(null, cameraName);
-            }
-
-            if (!hlsUrl) {
-                throw new Error("Backend did not provide playback.hls_url");
-            }
-
-            TVAppState.setCameraPlaybackUrl(cameraName, hlsUrl);
-            PlayerUI.setStatus("Waiting for publisher...");
-            await TVAppState.waitForCameraRunning(cameraName, TVAppState.getStartupGraceMs());
-
-            if (token !== openRequestToken) {
-                return;
-            }
-
-            PlayerUI.setStatus("Starting AVPlay...");
-            await TVPlayer.play(hlsUrl);
-
-            if (token !== openRequestToken) {
-                return;
-            }
-
-            PlayerUI.showLoading(false);
-            PlayerUI.showBuffering(false);
-            PlayerUI.setStatus("LIVE");
-            playbackRetryAttempt = 0;
-        } catch (error) {
-            if (token !== openRequestToken) {
-                return;
-            }
-
-            console.error("openAndPlayCamera failed", error);
-            PlayerUI.showLoading(false);
-            PlayerUI.showBuffering(false);
-            schedulePlaybackRetry(cameraName, error);
-        }
+                console.error("openAndPlayCamera failed", error);
+                PlayerUI.showLoading(false);
+                PlayerUI.showBuffering(false);
+                schedulePlaybackRetry(cameraName, error);
+            });
     }
 
     function schedulePlaybackRetry(cameraName, error) {
@@ -272,7 +286,7 @@
         pollTimer = setTimeout(runPollCycle, delay);
     }
 
-    async function runPollCycle() {
+    function runPollCycle() {
         if (pollInFlight) {
             scheduleNextPoll();
             return;
@@ -280,23 +294,24 @@
 
         pollInFlight = true;
 
-        try {
-            var response = await TVApi.poll(TVAppState.getStateVersion(), TVAppState.getPollUrl());
-            if (response.changed && response.payload) {
-                TVAppState.applyBackendState(response.payload);
-            } else if (response.state_version !== undefined) {
-                TVAppState.applyBackendState({ state_version: response.state_version });
-            }
+        TVApi.poll(TVAppState.getStateVersion(), TVAppState.getPollUrl())
+            .then(function (response) {
+                if (response.changed && response.payload) {
+                    TVAppState.applyBackendState(response.payload);
+                } else if (response.state_version !== undefined) {
+                    TVAppState.applyBackendState({ state_version: response.state_version });
+                }
 
-            pollBackoffStep = 0;
-        } catch (error) {
-            pollBackoffStep = Math.min(pollBackoffStep + 1, 5);
-            console.warn("Polling failed", error);
-        } finally {
-            pollInFlight = false;
-            renderGrid();
-            scheduleNextPoll();
-        }
+                pollBackoffStep = 0;
+            }, function (error) {
+                pollBackoffStep = Math.min(pollBackoffStep + 1, 5);
+                console.warn("Polling failed", error);
+            })
+            .then(function () {
+                pollInFlight = false;
+                renderGrid();
+                scheduleNextPoll();
+            });
     }
 
     function registerRemoteKeys() {
@@ -316,6 +331,7 @@
     function exitApp() {
         clearTimeout(pollTimer);
         clearTimeout(playbackRetryTimer);
+        clearTimeout(resizeRectTimer);
         TVPlayer.destroy();
 
         try {
@@ -330,28 +346,50 @@
         global.close();
     }
 
-    async function bootstrap() {
-        try {
-            var bootstrapData = await TVApi.getBootstrapLite();
-            TVAppState.applyBackendState(bootstrapData);
-            updateBackendInfo();
-            renderGrid();
-            showToast("Connected");
-            scheduleNextPoll();
-        } catch (error) {
-            console.error("Bootstrap failed", error);
-            showToast("Bootstrap failed. Retrying...");
-            pollBackoffStep = Math.min(pollBackoffStep + 1, 5);
-            scheduleNextPoll();
-        }
+    function bootstrap() {
+        TVApi.getBootstrapLite()
+            .then(function (bootstrapData) {
+                TVAppState.applyBackendState(bootstrapData);
+                updateBackendInfo();
+                renderGrid();
+                showToast("Connected");
+                scheduleNextPoll();
+            }, function (error) {
+                console.error("Bootstrap failed", error);
+                showToast("Bootstrap failed. Retrying...");
+                pollBackoffStep = Math.min(pollBackoffStep + 1, 5);
+                scheduleNextPoll();
+            });
     }
 
     function bindLifecycle() {
         document.addEventListener("keydown", handleKeyDown);
 
+        global.addEventListener("resize", function () {
+            clearTimeout(resizeRectTimer);
+            resizeRectTimer = setTimeout(function () {
+                if (TVAppState.getMode() === "PLAYER") {
+                    TVPlayer.refreshDisplayRect();
+                }
+            }, 150);
+        });
+
         document.addEventListener("visibilitychange", function () {
             if (document.hidden) {
                 TVPlayer.stopAndClose();
+                return;
+            }
+
+            if (TVAppState.getMode() !== "PLAYER") {
+                return;
+            }
+
+            TVPlayer.refreshDisplayRect();
+
+            var currentCamera = TVAppState.getCurrentCamera();
+            if (currentCamera) {
+                PlayerUI.setStatus("Resuming...");
+                openAndPlayCamera(currentCamera, { reopen: false });
             }
         });
 

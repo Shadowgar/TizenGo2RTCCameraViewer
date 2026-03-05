@@ -125,9 +125,7 @@
         if (entry.playback && typeof entry.playback === "object") {
             var mainPlayback = entry.playback.main || entry.playback;
             target.playback.main = mainPlayback && mainPlayback.hls_url ? mainPlayback.hls_url : target.playback.main;
-            target.playback.live = entry.playback.live && entry.playback.live.hls_url
-                ? entry.playback.live.hls_url
-                : target.playback.live;
+            target.playback.live = (entry.playback.live && entry.playback.live.hls_url) ? entry.playback.live.hls_url : target.playback.live;
         }
 
         if (entry.hls_url) {

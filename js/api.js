@@ -1,3 +1,4 @@
+/*global Promise */
 (function (global) {
     "use strict";
 
@@ -78,7 +79,7 @@
         function doRequest() {
             return new Promise(function (resolve, reject) {
                 var timeoutHandle = null;
-                var controller = global.AbortController ? new AbortController() : null;
+                var controller = global.AbortController ? new global.AbortController() : null;
 
                 if (controller) {
                     timeoutHandle = global.setTimeout(function () {

@@ -34,7 +34,24 @@
 
     function applyDisplayRect() {
         var player = getAvPlay();
-        player.setDisplayRect(0, 0, 1920, 1080);
+        var width = Math.max(
+            1,
+            Math.floor(
+                global.innerWidth ||
+                (global.document && global.document.documentElement && global.document.documentElement.clientWidth) ||
+                1920
+            )
+        );
+        var height = Math.max(
+            1,
+            Math.floor(
+                global.innerHeight ||
+                (global.document && global.document.documentElement && global.document.documentElement.clientHeight) ||
+                1080
+            )
+        );
+
+        player.setDisplayRect(0, 0, width, height);
     }
 
     function installListener() {
@@ -159,6 +176,20 @@
             }
 
             return currentState;
+        },
+
+        refreshDisplayRect: function () {
+            try {
+                var player = getAvPlay();
+                var currentState = player.getState ? player.getState() : "NONE";
+                if (currentState === "NONE") {
+                    return;
+                }
+
+                applyDisplayRect();
+            } catch (error) {
+                console.warn("refreshDisplayRect failed", error);
+            }
         },
 
         stopAndClose: function () {

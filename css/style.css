@@ -54,19 +54,19 @@ body {
 
 .camera-grid {
     height: calc(100% - 156px);
-    padding: 14px 40px 14px;
-    display: grid;
-    gap: 20px;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    grid-template-rows: repeat(2, minmax(0, 1fr));
+    padding: 12px 36px 12px;
+    display: flex;
+    flex-wrap: wrap;
 }
 
 .camera-tile {
     position: relative;
+    width: 50%;
+    height: 50%;
     border: 2px solid #324059;
     border-radius: 16px;
     background: linear-gradient(160deg, #0f1726 0%, #0c111a 100%);
-    padding: 22px;
+    padding: 20px;
     transition: border-color 120ms linear;
 }
 
@@ -139,7 +139,10 @@ body {
 
 .avplay-surface {
     position: absolute;
-    inset: 0;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
     background: #000;
 }
 
@@ -211,7 +214,10 @@ body {
 
 .error-actions {
     display: flex;
-    gap: 16px;
+}
+
+.error-actions .error-action + .error-action {
+    margin-left: 16px;
 }
 
 .error-action {
