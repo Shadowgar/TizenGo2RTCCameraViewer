@@ -37,6 +37,18 @@
         return value + separator + "tvapp_ts=" + encodeURIComponent(String(nonce));
     }
 
+    function buildSnapshotFallback(cameraName) {
+        var base = (global.TVAppState && global.TVAppState.getBridgeBaseUrl)
+            ? String(global.TVAppState.getBridgeBaseUrl() || "").replace(/\/$/, "")
+            : "";
+
+        if (!base) {
+            return "";
+        }
+
+        return base + "/snapshot/" + encodeURIComponent(String(cameraName || ""));
+    }
+
     function createTile(cameraName, cameraLabel) {
         var tile = document.createElement("div");
         tile.className = "camera-tile";
@@ -123,8 +135,9 @@
                 tile.querySelector(".tile-updated").textContent = formatTime(camera.updatedAt || global.TVAppState.getStateUpdatedAt());
 
                 if (thumb) {
-                    if (camera.thumbnailUrl) {
-                        var resolvedThumbUrl = withNonce(camera.thumbnailUrl, thumbNonce);
+                    var baseThumbUrl = camera.thumbnailUrl || buildSnapshotFallback(cameraName);
+                    if (baseThumbUrl) {
+                        var resolvedThumbUrl = withNonce(baseThumbUrl, thumbNonce);
                         var currentThumbState = thumb.getAttribute("data-thumb-state") || "none";
                         if (thumb.getAttribute("data-src") !== resolvedThumbUrl && currentThumbState !== "loading") {
                             thumb.src = resolvedThumbUrl;

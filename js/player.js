@@ -161,7 +161,7 @@
                     applyDisplayRect();
 
                     try {
-                        player.setDisplayMethod("PLAYER_DISPLAY_MODE_AUTO_ASPECT_RATIO");
+                        player.setDisplayMethod("PLAYER_DISPLAY_MODE_FULL_SCREEN");
                     } catch (displayMethodError) {
                         console.warn("Unable to set display method", displayMethodError);
                     }
@@ -180,7 +180,7 @@
                             // bring the AVPlay plane above an initially black compositor state.
                             try {
                                 applyDisplayRect();
-                                player.setDisplayMethod("PLAYER_DISPLAY_MODE_AUTO_ASPECT_RATIO");
+                                player.setDisplayMethod("PLAYER_DISPLAY_MODE_FULL_SCREEN");
                             } catch (postPlayDisplayError) {
                                 console.warn("Unable to apply post-play display settings", postPlayDisplayError);
                             }
