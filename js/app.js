@@ -132,7 +132,7 @@
                 hlsUrl = extractHlsUrl(openResponse, cameraName);
 
                 if (!hlsUrl) {
-                    throw new Error("Backend did not provide playback.hls_url");
+                    throw new Error("No HLS URL found in /tizen/open playback or bootstrap preferred_url");
                 }
 
                 TVAppState.setCameraPlaybackUrl(cameraName, hlsUrl);

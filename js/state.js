@@ -113,10 +113,15 @@
         target.label = entry.label || entry.display_name || target.label || name;
 
         var statusValue = entry.status || entry.state || target.status || "UNKNOWN";
+        if (!entry.status && !entry.state && typeof entry.ready === "boolean") {
+            statusValue = entry.ready ? "READY" : "STOPPED";
+        }
         target.status = String(statusValue).toUpperCase();
 
         if (typeof entry.running === "boolean") {
             target.running = entry.running;
+        } else if (typeof entry.ready === "boolean") {
+            target.running = entry.ready;
         } else {
             target.running = /RUNNING|LIVE|PLAYING/i.test(target.status);
         }
@@ -131,6 +136,14 @@
 
         if (entry.hls_url) {
             target.playback.main = entry.hls_url;
+        }
+
+        if (entry.preferred_url) {
+            target.playback.main = entry.preferred_url;
+        }
+
+        if (entry.url) {
+            target.playback.main = entry.url;
         }
     }
 

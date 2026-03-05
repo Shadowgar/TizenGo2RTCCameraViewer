@@ -59,12 +59,11 @@
             throw new Error("Invalid /tizen/open payload: camera is required");
         }
 
-        if (!payload.playback || typeof payload.playback !== "object") {
-            throw new Error("Invalid /tizen/open payload: playback object is required");
-        }
-
-        if (!payload.playback.hls_url) {
-            throw new Error("Invalid /tizen/open payload: playback.hls_url is required");
+        // Some bridge variants return playback later via poll/bootstrap and keep
+        // playback null in /tizen/open. Accept this shape and let the app
+        // resolve URL via state fallbacks.
+        if (payload.playback !== undefined && payload.playback !== null && typeof payload.playback !== "object") {
+            throw new Error("Invalid /tizen/open payload: playback must be object or null");
         }
     }
 
