@@ -141,16 +141,58 @@
         return doRequest();
     }
 
+    function buildBridgeCandidates() {
+        var seen = {};
+        var list = [];
+        var primary = global.TVAppState.getBridgeBaseUrl();
+        var runtime = global.TVAppConfig || {};
+        var configured = runtime.bridgeBaseUrlCandidates;
+
+        function add(url) {
+            var normalized = String(url || "").trim().replace(/\/$/, "");
+            if (!normalized || seen[normalized]) {
+                return;
+            }
+            seen[normalized] = true;
+            list.push(normalized);
+        }
+
+        add(primary);
+
+        if (Array.isArray(configured)) {
+            configured.forEach(add);
+        }
+
+        return list;
+    }
+
+    function tryBootstrapFromCandidates(candidates, index, lastError) {
+        if (index >= candidates.length) {
+            return Promise.reject(lastError || new Error("No bridge URL candidates available"));
+        }
+
+        var candidate = candidates[index];
+        var url = buildUrl(candidate, "/tizen/bootstrap-lite");
+
+        return requestJson({
+            url: url,
+            retries: MAX_RETRIES
+        }).then(function (payload) {
+            validateBootstrapLite(payload);
+
+            if (global.TVAppState.getBridgeBaseUrl() !== candidate) {
+                global.TVAppState.setBridgeBaseUrl(candidate);
+            }
+
+            return payload;
+        }, function (error) {
+            return tryBootstrapFromCandidates(candidates, index + 1, error);
+        });
+    }
+
     var TVApi = {
         getBootstrapLite: function () {
-            var url = buildUrl(global.TVAppState.getBridgeBaseUrl(), "/tizen/bootstrap-lite");
-            return requestJson({
-                url: url,
-                retries: MAX_RETRIES
-            }).then(function (payload) {
-                validateBootstrapLite(payload);
-                return payload;
-            });
+            return tryBootstrapFromCandidates(buildBridgeCandidates(), 0, null);
         },
 
         poll: function (sinceVersion, pollUrl) {

@@ -19,6 +19,17 @@
 
     var listeners = [];
     var runtimeConfig = global.TVAppConfig || {};
+    var storedBridgeBaseUrl = safeGetStorage(STORAGE_KEYS.bridgeBaseUrl);
+    var storedMediaMtxBaseUrl = safeGetStorage(STORAGE_KEYS.mediamtxBaseUrl);
+    var useForcedRuntimeConfig = runtimeConfig.forceRuntimeConfig === true;
+
+    var resolvedBridgeBaseUrl = useForcedRuntimeConfig
+        ? (runtimeConfig.bridgeBaseUrl || storedBridgeBaseUrl || "http://openclaw.local:8090")
+        : (storedBridgeBaseUrl || runtimeConfig.bridgeBaseUrl || "http://openclaw.local:8090");
+
+    var resolvedMediaMtxBaseUrl = useForcedRuntimeConfig
+        ? (runtimeConfig.mediamtxBaseUrl || storedMediaMtxBaseUrl || "http://openclaw.local:8889")
+        : (storedMediaMtxBaseUrl || runtimeConfig.mediamtxBaseUrl || "http://openclaw.local:8889");
 
     var state = {
         mode: "GRID",
@@ -29,10 +40,15 @@
         pollUrl: "/tizen/poll",
         pollIntervalMs: 2500,
         startupGraceMs: 1500,
-        bridgeBaseUrl: safeGetStorage(STORAGE_KEYS.bridgeBaseUrl) || runtimeConfig.bridgeBaseUrl || "http://openclaw.local:8090",
-        mediamtxBaseUrl: safeGetStorage(STORAGE_KEYS.mediamtxBaseUrl) || runtimeConfig.mediamtxBaseUrl || "http://openclaw.local:8889",
+        bridgeBaseUrl: resolvedBridgeBaseUrl,
+        mediamtxBaseUrl: resolvedMediaMtxBaseUrl,
         cameras: {}
     };
+
+    if (useForcedRuntimeConfig) {
+        safeSetStorage(STORAGE_KEYS.bridgeBaseUrl, resolvedBridgeBaseUrl);
+        safeSetStorage(STORAGE_KEYS.mediamtxBaseUrl, resolvedMediaMtxBaseUrl);
+    }
 
     initializeDefaultCameras();
 
