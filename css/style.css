@@ -62,20 +62,18 @@ body {
 
 .camera-grid {
     height: calc(100% - 156px);
-    padding: 8px 24px 12px;
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: center;
-    align-content: center;
-    gap: 14px;
+    padding: 8px 14px 14px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: 1fr 1fr;
+    gap: 10px;
 }
 
 .camera-tile {
     position: relative;
-    width: calc(((100vh - 196px) / 2) * 1.7778);
-    max-width: calc((100% - 14px) / 2);
-    aspect-ratio: 16 / 9;
+    width: auto;
     height: auto;
+    min-height: 0;
     border: 2px solid #324059;
     border-radius: 16px;
     background: linear-gradient(160deg, #0f1726 0%, #0c111a 100%);

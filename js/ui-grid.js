@@ -25,6 +25,7 @@
     var focusedIndex = 0;
     var thumbNonce = Date.now();
     var lastThumbNonceAt = 0;
+    var THUMB_REFRESH_MS = 12000;
 
     function withNonce(url, nonce) {
         var value = String(url || "").trim();
@@ -99,7 +100,7 @@
             }
 
             var now = Date.now();
-            if (now - lastThumbNonceAt >= 2500) {
+            if (now - lastThumbNonceAt >= THUMB_REFRESH_MS) {
                 thumbNonce = now;
                 lastThumbNonceAt = now;
             }
@@ -124,7 +125,8 @@
                 if (thumb) {
                     if (camera.thumbnailUrl) {
                         var resolvedThumbUrl = withNonce(camera.thumbnailUrl, thumbNonce);
-                        if (thumb.getAttribute("data-src") !== resolvedThumbUrl) {
+                        var currentThumbState = thumb.getAttribute("data-thumb-state") || "none";
+                        if (thumb.getAttribute("data-src") !== resolvedThumbUrl && currentThumbState !== "loading") {
                             thumb.src = resolvedThumbUrl;
                             thumb.setAttribute("data-src", resolvedThumbUrl);
                             thumb.setAttribute("data-thumb-state", "loading");

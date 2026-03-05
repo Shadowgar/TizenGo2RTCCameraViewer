@@ -64,11 +64,16 @@
             )
         );
 
-        // Some devices report screen width/height in portrait while the app is in
-        // landscape. If we detect that mismatch, keep the window-based landscape rect.
-        if (windowWidth > windowHeight && height > width) {
-            width = Math.max(1, windowWidth);
-            height = Math.max(1, windowHeight);
+        // Normalize to landscape coordinates expected by AVPlay.
+        if (height > width) {
+            var tmp = width;
+            width = height;
+            height = tmp;
+        }
+
+        if (width < 1280 || height < 720) {
+            width = 1920;
+            height = 1080;
         }
 
         player.setDisplayRect(0, 0, width, height);
@@ -156,7 +161,7 @@
                     applyDisplayRect();
 
                     try {
-                        player.setDisplayMethod("PLAYER_DISPLAY_MODE_FULL_SCREEN");
+                        player.setDisplayMethod("PLAYER_DISPLAY_MODE_AUTO_ASPECT_RATIO");
                     } catch (displayMethodError) {
                         console.warn("Unable to set display method", displayMethodError);
                     }
@@ -175,7 +180,7 @@
                             // bring the AVPlay plane above an initially black compositor state.
                             try {
                                 applyDisplayRect();
-                                player.setDisplayMethod("PLAYER_DISPLAY_MODE_FULL_SCREEN");
+                                player.setDisplayMethod("PLAYER_DISPLAY_MODE_AUTO_ASPECT_RATIO");
                             } catch (postPlayDisplayError) {
                                 console.warn("Unable to apply post-play display settings", postPlayDisplayError);
                             }
