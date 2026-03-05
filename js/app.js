@@ -42,13 +42,16 @@
     var lastPlayTimeTick = 0;
     var resizeRectTimer = null;
     var diagnosticsTimer = null;
+    var viewStatusTimer = null;
     var debugRefreshTimer = null;
     var debugVisible = false;
     var playerHasActiveStream = false;
     var pollPlaybackRecoverInFlight = false;
+    var lastGridWarmupAt = 0;
 
     var MAX_AUTO_PLAYBACK_RETRIES = 4;
     var BACKEND_UNREACHABLE_THRESHOLD = 3;
+    var GRID_WARMUP_COOLDOWN_MS = 3000;
 
     var diagnostics = {
         operations: {
@@ -368,9 +371,13 @@
         });
     }
 
-    function requestOpen(cameraName) {
+    function requestOpen(cameraName, options) {
+        options = options || {};
         var startedAt = opStart();
-        return TVApi.openCamera(cameraName).then(function (payload) {
+        return TVApi.openCamera(cameraName, {
+            timeoutMs: options.timeoutMs,
+            retries: options.retries
+        }).then(function (payload) {
             markOpSuccess("open", startedAt, cameraName + " ready=" + (!!payload.ready));
             TVAppState.setCameraDebugInfo(cameraName, "open ok ready=" + (!!payload.ready));
             return payload;
@@ -379,6 +386,67 @@
             TVAppState.setCameraDebugInfo(cameraName, "open err: " + shortError(error));
             throw error;
         });
+    }
+
+    function requestViewStart(cameraName) {
+        return TVApi.startView(cameraName, {
+            timeoutMs: 2500,
+            retries: 0
+        }).then(function () {
+            TVAppState.setCameraRunning(cameraName, true, "STARTING");
+            TVAppState.setCameraDebugInfo(cameraName, "start req ok");
+            return true;
+        }, function () {
+            return false;
+        });
+    }
+
+    function allGridCamerasRunning() {
+        var cameras = TVAppState.getCameras();
+        var cameraOrder = TVAppState.getCameraOrder();
+
+        return cameraOrder.every(function (name) {
+            return cameras[name] && cameras[name].running;
+        });
+    }
+
+    function warmupGridFeeds(reason) {
+        if (TVAppState.getMode() !== "GRID") {
+            return;
+        }
+
+        var now = Date.now();
+        if ((now - lastGridWarmupAt) < GRID_WARMUP_COOLDOWN_MS) {
+            return;
+        }
+
+        if (allGridCamerasRunning()) {
+            return;
+        }
+
+        lastGridWarmupAt = now;
+        pushDiagEvent("INFO", "grid warmup: " + String(reason || "startup"));
+
+        TVAppState.getCameraOrder().forEach(function (cameraName, index) {
+            var camera = TVAppState.getCamera(cameraName);
+            if (camera && camera.running) {
+                return;
+            }
+
+            setTimeout(function () {
+                requestViewStart(cameraName).then(function () {
+                    renderGrid();
+                });
+            }, index * 220);
+        });
+
+        setTimeout(function () {
+            fetchViewStatus().catch(function () {
+                return null;
+            }).then(function () {
+                renderGrid();
+            });
+        }, 900);
     }
 
     function switchToGrid() {
@@ -394,6 +462,8 @@
         TVPlayer.stopAndClose();
         clearTimeout(playbackRetryTimer);
         playbackRetryTimer = null;
+
+        warmupGridFeeds("return-to-grid");
     }
 
     function switchToPlayer(cameraName) {
@@ -907,6 +977,9 @@
                 if (triggeredResync) {
                     return;
                 }
+                if (TVAppState.getMode() === "GRID") {
+                    warmupGridFeeds("poll");
+                }
                 maybeRecoverPlaybackAfterPoll();
                 renderGrid();
                 scheduleNextPoll();
@@ -934,6 +1007,7 @@
         clearTimeout(firstFrameWatchTimer);
         clearTimeout(resizeRectTimer);
         clearInterval(diagnosticsTimer);
+        clearInterval(viewStatusTimer);
         clearInterval(debugRefreshTimer);
         TVPlayer.destroy();
 
@@ -961,6 +1035,7 @@
                 updateBackendInfo();
                 renderGrid();
                 showToast("Connected");
+                warmupGridFeeds("bootstrap");
                 scheduleNextPoll();
             }, function (error) {
                 console.error("Bootstrap failed", error);
@@ -1104,6 +1179,14 @@
                 return null;
             });
         }, 12000);
+        viewStatusTimer = setInterval(function () {
+            if (TVAppState.getMode() !== "GRID") {
+                return;
+            }
+            fetchViewStatus().catch(function () {
+                return null;
+            });
+        }, 3000);
         bootstrap();
     }
 

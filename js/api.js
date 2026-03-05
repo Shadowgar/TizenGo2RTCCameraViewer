@@ -251,7 +251,8 @@
             });
         },
 
-        openCamera: function (cameraName) {
+        openCamera: function (cameraName, options) {
+            options = options || {};
             var url = buildUrl(global.TVAppState.getBridgeBaseUrl(), "/tizen/open");
             return requestJson({
                 url: url,
@@ -262,10 +263,28 @@
                 body: {
                     camera: cameraName
                 },
-                retries: MAX_RETRIES
+                retries: typeof options.retries === "number" ? options.retries : MAX_RETRIES,
+                timeoutMs: typeof options.timeoutMs === "number" ? options.timeoutMs : DEFAULT_TIMEOUT_MS
             }).then(function (payload) {
                 validateOpen(payload);
                 return payload;
+            });
+        },
+
+        startView: function (cameraName, options) {
+            options = options || {};
+            var url = buildUrl(global.TVAppState.getBridgeBaseUrl(), "/view/start");
+            return requestJson({
+                url: url,
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: {
+                    camera: cameraName
+                },
+                retries: typeof options.retries === "number" ? options.retries : 0,
+                timeoutMs: typeof options.timeoutMs === "number" ? options.timeoutMs : 3000
             });
         },
 

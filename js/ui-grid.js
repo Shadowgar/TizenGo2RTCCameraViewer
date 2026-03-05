@@ -25,8 +25,8 @@
     var focusedIndex = 0;
     var thumbNonce = Date.now();
     var lastThumbNonceAt = 0;
-    var THUMB_REFRESH_MS = 12000;
-    var THUMB_LOAD_TIMEOUT_MS = 9000;
+    var THUMB_REFRESH_MS = 900;
+    var THUMB_LOAD_TIMEOUT_MS = 4500;
     var refreshCursor = 0;
 
     function withNonce(url, nonce) {
@@ -57,6 +57,7 @@
         tile.setAttribute("data-camera", cameraName);
 
         tile.innerHTML = [
+            '<div class="tile-preview"></div>',
             '<div class="tile-thumb-wrap"><img class="tile-thumb" alt=""/></div>',
             '<div class="tile-head">',
             '<span class="tile-name"></span>',
@@ -70,10 +71,15 @@
         tile.querySelector(".tile-name").textContent = cameraLabel;
 
         var thumb = tile.querySelector(".tile-thumb");
+        var preview = tile.querySelector(".tile-preview");
         if (thumb) {
             thumb.addEventListener("load", function () {
                 thumb.setAttribute("data-thumb-state", "ok");
                 thumb.removeAttribute("data-thumb-started-at");
+                if (preview && thumb.src) {
+                    preview.style.backgroundImage = 'url("' + thumb.src.replace(/"/g, "%22") + '")';
+                    preview.classList.add("ready");
+                }
             });
             thumb.addEventListener("error", function () {
                 thumb.setAttribute("data-thumb-state", "err");
@@ -133,6 +139,7 @@
                 var status = normalizeStatus(camera.status);
                 var running = !!camera.running;
                 var thumb = tile.querySelector(".tile-thumb");
+                var preview = tile.querySelector(".tile-preview");
                 var thumbState = "none";
 
                 tile.querySelector(".tile-name").textContent = camera.label || global.TVAppState.getCameraLabel(cameraName);
@@ -169,7 +176,10 @@
                         thumb.removeAttribute("data-src");
                         thumb.setAttribute("data-thumb-state", "none");
                         thumb.removeAttribute("data-thumb-started-at");
-                        thumb.classList.add("hidden");
+                        if (preview) {
+                            preview.style.backgroundImage = "";
+                            preview.classList.remove("ready");
+                        }
                     }
 
                     thumbState = thumb.getAttribute("data-thumb-state") || thumbState;
