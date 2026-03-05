@@ -23,6 +23,18 @@
     var container = null;
     var cameraOrder = [];
     var focusedIndex = 0;
+    var thumbNonce = Date.now();
+    var lastThumbNonceAt = 0;
+
+    function withNonce(url, nonce) {
+        var value = String(url || "").trim();
+        if (!value) {
+            return "";
+        }
+
+        var separator = value.indexOf("?") === -1 ? "?" : "&";
+        return value + separator + "tvapp_ts=" + encodeURIComponent(String(nonce));
+    }
 
     function createTile(cameraName, cameraLabel) {
         var tile = document.createElement("div");
@@ -41,6 +53,17 @@
         ].join("");
 
         tile.querySelector(".tile-name").textContent = cameraLabel;
+
+        var thumb = tile.querySelector(".tile-thumb");
+        if (thumb) {
+            thumb.addEventListener("load", function () {
+                thumb.setAttribute("data-thumb-state", "ok");
+            });
+            thumb.addEventListener("error", function () {
+                thumb.setAttribute("data-thumb-state", "err");
+            });
+        }
+
         return tile;
     }
 
@@ -75,6 +98,12 @@
                 return;
             }
 
+            var now = Date.now();
+            if (now - lastThumbNonceAt >= 2500) {
+                thumbNonce = now;
+                lastThumbNonceAt = now;
+            }
+
             cameraOrder.forEach(function (cameraName) {
                 var camera = camerasByName[cameraName] || {};
                 var tile = container.querySelector('[data-camera="' + cameraName + '"]');
@@ -85,6 +114,7 @@
                 var status = normalizeStatus(camera.status);
                 var running = !!camera.running;
                 var thumb = tile.querySelector(".tile-thumb");
+                var thumbState = "none";
 
                 tile.querySelector(".tile-name").textContent = camera.label || global.TVAppState.getCameraLabel(cameraName);
                 tile.querySelector(".tile-status").textContent = status;
@@ -93,13 +123,24 @@
 
                 if (thumb) {
                     if (camera.thumbnailUrl) {
-                        thumb.src = camera.thumbnailUrl;
+                        var resolvedThumbUrl = withNonce(camera.thumbnailUrl, thumbNonce);
+                        if (thumb.getAttribute("data-src") !== resolvedThumbUrl) {
+                            thumb.src = resolvedThumbUrl;
+                            thumb.setAttribute("data-src", resolvedThumbUrl);
+                            thumb.setAttribute("data-thumb-state", "loading");
+                        }
                         thumb.classList.remove("hidden");
                     } else {
                         thumb.removeAttribute("src");
+                        thumb.removeAttribute("data-src");
+                        thumb.setAttribute("data-thumb-state", "none");
                         thumb.classList.add("hidden");
                     }
+
+                    thumbState = thumb.getAttribute("data-thumb-state") || thumbState;
                 }
+
+                tile.querySelector(".tile-debug").textContent = (camera.debugInfo || "") + (camera.debugInfo ? " " : "") + "snap=" + thumbState;
 
                 var liveBadge = tile.querySelector(".tile-live");
                 liveBadge.classList.toggle("live", running);

@@ -34,24 +34,42 @@
 
     function applyDisplayRect() {
         var player = getAvPlay();
+        var windowWidth = Math.floor(
+            global.innerWidth ||
+            (global.document && global.document.documentElement && global.document.documentElement.clientWidth) ||
+            0
+        );
+        var windowHeight = Math.floor(
+            global.innerHeight ||
+            (global.document && global.document.documentElement && global.document.documentElement.clientHeight) ||
+            0
+        );
+        var screenWidth = Math.floor((global.screen && global.screen.availWidth) || 0);
+        var screenHeight = Math.floor((global.screen && global.screen.availHeight) || 0);
+
         var width = Math.max(
             1,
             Math.floor(
-                (global.screen && global.screen.availWidth) ||
-                global.innerWidth ||
-                (global.document && global.document.documentElement && global.document.documentElement.clientWidth) ||
+                windowWidth ||
+                screenWidth ||
                 1920
             )
         );
         var height = Math.max(
             1,
             Math.floor(
-                (global.screen && global.screen.availHeight) ||
-                global.innerHeight ||
-                (global.document && global.document.documentElement && global.document.documentElement.clientHeight) ||
+                windowHeight ||
+                screenHeight ||
                 1080
             )
         );
+
+        // Some devices report screen width/height in portrait while the app is in
+        // landscape. If we detect that mismatch, keep the window-based landscape rect.
+        if (windowWidth > windowHeight && height > width) {
+            width = Math.max(1, windowWidth);
+            height = Math.max(1, windowHeight);
+        }
 
         player.setDisplayRect(0, 0, width, height);
     }
